@@ -1,0 +1,18 @@
+<?php
+/**
+ * Database Configuration Example
+ * 
+ * Copy this file to database_config.php and update with your database credentials
+ * Your MySQL is running on port 3307
+ */
+
+return [
+    'host' => 'localhost',
+    'port' => 3307,  // Your MySQL port
+    'dbname' => 'quiz_system',
+    'username' => 'root',
+    'password' => '',  // Your MySQL password (usually empty for XAMPP/WAMP)
+    'charset' => 'utf8mb4',
+    'show_errors' => false
+];
+

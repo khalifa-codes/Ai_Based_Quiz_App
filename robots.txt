@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /config/
+Disallow: /includes/
+Disallow: /scripts/
+Disallow: /student/quizzes/quiz_window.php
+Disallow: /teacher/quizzes/quiz_window.php
+
+Sitemap: https://quizaura.hamzax.me/sitemap.xml
+

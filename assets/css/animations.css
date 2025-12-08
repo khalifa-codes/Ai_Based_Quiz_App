@@ -1,0 +1,304 @@
+/* ============================================
+   SaaS Authentication UI - Animations
+   ============================================ */
+
+/* Role Switching Animation */
+.role-selector {
+    position: relative;
+}
+
+.role-slide-indicator {
+    display: none;
+}
+
+.role-btn[data-role="teacher"].active ~ .role-slide-indicator,
+.role-selector:has(.role-btn[data-role="teacher"].active) .role-slide-indicator {
+    transform: translateX(calc(100% + 0.5rem));
+}
+
+.role-btn[data-role="organization"].active ~ .role-slide-indicator,
+.role-selector:has(.role-btn[data-role="organization"].active) .role-slide-indicator {
+    transform: translateX(calc(200% + 1rem));
+}
+
+/* Vertical Slide Animation for Login/Register Switch */
+.auth-wrapper {
+    position: relative;
+    overflow: visible;
+}
+
+.auth-card {
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.5s ease;
+}
+
+.auth-card.slide-up {
+    transform: translateY(-100%);
+    opacity: 0;
+}
+
+.auth-card.slide-down {
+    transform: translateY(100%);
+    opacity: 0;
+}
+
+.auth-card.slide-in {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+/* Role Switch Card Sliding Animation */
+/* Role Switch Form Sliding Animation */
+.auth-form {
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+    position: relative;
+}
+
+.auth-form.role-slide-out-left {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+
+.auth-form.role-slide-out-right {
+    transform: translateX(100%);
+    opacity: 0;
+}
+
+.auth-form.role-slide-in {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.auth-card {
+    animation: fadeIn 0.6s ease-out;
+}
+
+/* Role Button Hover Animation */
+.role-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.role-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(13, 110, 253, 0.1);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+    z-index: 0;
+}
+
+.role-btn:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.role-btn span,
+.role-btn i {
+    position: relative;
+    z-index: 1;
+}
+
+/* Input Focus Animation */
+.form-floating > .form-control {
+    position: relative;
+}
+
+.form-floating > .form-control:focus {
+    animation: inputPulse 0.3s ease;
+}
+
+@keyframes inputPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2);
+    }
+    100% {
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+    }
+}
+
+/* Button Loading Animation */
+.btn-primary.loading {
+    position: relative;
+    color: transparent;
+    pointer-events: none;
+}
+
+.btn-primary.loading .btn-spinner {
+    display: inline-block !important;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+}
+
+/* Success Animation */
+@keyframes successCheck {
+    0% {
+        transform: scale(0);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.success-icon {
+    animation: successCheck 0.5s ease;
+}
+
+/* Error Shake Animation */
+@keyframes shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    10%, 30%, 50%, 70%, 90% {
+        transform: translateX(-10px);
+    }
+    20%, 40%, 60%, 80% {
+        transform: translateX(10px);
+    }
+}
+
+.form-control.is-invalid {
+    animation: shake 0.5s ease;
+}
+
+/* Smooth Theme Transition */
+* {
+    transition: background-color 0.3s ease,
+                color 0.3s ease,
+                border-color 0.3s ease;
+}
+
+/* Card Entrance Animation */
+@keyframes cardEntrance {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.auth-card {
+    animation: cardEntrance 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Role Indicator Slide Animation */
+.role-selector-wrapper {
+    position: relative;
+}
+
+.role-indicator {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-color), var(--info-color));
+    border-radius: 2px;
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 50%;
+}
+
+.role-btn[data-role="admin"].active ~ .role-indicator,
+.role-selector:has(.role-btn[data-role="admin"].active) .role-indicator {
+    transform: translateX(100%);
+}
+
+/* Password Strength Indicator Animation */
+.password-strength {
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+    position: relative;
+}
+
+.password-strength-bar {
+    height: 100%;
+    width: 0;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    border-radius: 2px;
+}
+
+.password-strength-bar.weak {
+    width: 33%;
+    background: var(--danger-color);
+}
+
+.password-strength-bar.medium {
+    width: 66%;
+    background: var(--warning-color);
+}
+
+.password-strength-bar.strong {
+    width: 100%;
+    background: var(--success-color);
+}
+
+/* Loading Spinner Animation */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner-border {
+    animation: spin 0.75s linear infinite;
+}
+
+/* Smooth Scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Mobile Optimizations */
+@media (max-width: 576px) {
+    .auth-card {
+        animation-duration: 0.4s;
+    }
+
+    .role-btn::before {
+        display: none; /* Disable hover effect on mobile */
+    }
+}
+

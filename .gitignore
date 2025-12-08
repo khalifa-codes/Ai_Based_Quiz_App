@@ -1,0 +1,189 @@
+# ============================================
+# QuizAura - AI-Powered Quiz & Exam System
+# .gitignore Configuration
+# ============================================
+
+# ============================================
+# Sensitive Configuration Files
+# ============================================
+config/database_config.php
+config/ai_config.php
+*.env
+.env
+.env.local
+.env.*.local
+
+# ============================================
+# Storage & Uploads
+# ============================================
+# Storage directories - ignore all files but keep structure
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/quiz_json/*
+!storage/quiz_json/.gitkeep
+storage/logs/*
+!storage/logs/.gitkeep
+
+# ============================================
+# Logs & Temporary Files
+# ============================================
+*.log
+*.log.*
+logs/
+*.tmp
+*.temp
+*.cache
+*.swp
+*.swo
+*~
+
+# ============================================
+# OS & Editor Files
+# ============================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ============================================
+# IDE & Editor Files
+# ============================================
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# PhpStorm / IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+
+# ============================================
+# PHP Specific
+# ============================================
+# Composer
+/vendor/
+composer.phar
+composer.lock
+
+# PHPUnit
+phpunit.xml
+.phpunit.result.cache
+
+# ============================================
+# Node.js (if used)
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ============================================
+# Python (for scripts)
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# ============================================
+# Database
+# ============================================
+*.sql.bak
+*.sql.backup
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================
+# Backup Files
+# ============================================
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+
+# ============================================
+# Session Files
+# ============================================
+sessions/
+*.sess
+
+# ============================================
+# Compiled Files
+# ============================================
+*.compiled
+*.min.js
+*.min.css
+*.map
+
+# ============================================
+# Documentation Build
+# ============================================
+docs/_build/
+site/
+
+# ============================================
+# Testing
+# ============================================
+.phpunit.result.cache
+coverage/
+.nyc_output/
+
+# ============================================
+# Deployment
+# ============================================
+.htaccess.local
+.htpasswd
+deploy.sh
+deploy.php
+
+# ============================================
+# Miscellaneous
+# ============================================
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+.project
+.classpath
+.settings/

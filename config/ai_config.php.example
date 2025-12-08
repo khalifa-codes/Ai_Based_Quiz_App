@@ -1,0 +1,74 @@
+<?php
+/**
+ * AI Configuration File Example
+ * 
+ * Copy this file to ai_config.php and add your API keys
+ * 
+ * IMPORTANT: Add ai_config.php to .gitignore to keep your API keys secure!
+ * 
+ * You can also use environment variables instead:
+ * - GEMINI_API_KEY
+ * - GROQ_API_KEY
+ * - PERPLEXITY_API_KEY
+ */
+
+return [
+    'gemini' => [
+        'api_key' => 'YOUR_GEMINI_API_KEY_HERE', // Get from https://makersuite.google.com/app/apikey
+        'default_model' => 'gemini-2.5-pro',
+        'fallback_models' => [
+            'gemini-2.5-pro',
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+            'gemini-1.5-pro',
+            'gemini-1.5-flash',
+        ],
+        'available_models' => [
+            'gemini-2.5-flash',
+            'gemini-2.5-pro',
+            'gemini-2.0-flash',
+            'gemini-1.5-pro',
+            'gemini-1.5-flash'
+        ]
+    ],
+    'groq' => [
+        'api_key' => 'YOUR_GROQ_API_KEY_HERE', // Get from https://console.groq.com/keys
+        'default_model' => 'llama-3.3-70b-versatile',
+        'available_models' => [
+            'llama-3.3-70b-versatile',
+            'llama-3.1-70b-versatile',
+            'llama-3.1-8b-instant',
+            'mixtral-8x7b-32768'
+        ],
+        'free_models' => [
+            'llama-3.3-70b-versatile',
+            'llama-3.1-70b-versatile',
+            'llama-3.1-8b-instant',
+            'mixtral-8x7b-32768'
+        ]
+    ],
+    'perplexity' => [
+        'api_key' => 'YOUR_PERPLEXITY_API_KEY_HERE', // Get from https://www.perplexity.ai/settings/api
+        'default_model' => 'sonar-pro',
+        'available_models' => [
+            'sonar-pro',
+            'sonar',
+            'sonar-pro-online',
+            'sonar-online'
+        ],
+        'pro_models' => [
+            'sonar-pro',
+            'sonar-pro-online'
+        ]
+    ],
+    'default_provider' => 'gemini', // 'gemini', 'groq', or 'perplexity'
+    'timeout' => 120, // Request timeout in seconds
+    'max_retries' => 3, // Maximum retry attempts
+    'retry_delay' => 2, // Delay between retries in seconds
+    
+    // SSL Configuration (for development on Windows)
+    // Set to true to disable SSL verification (INSECURE - development only!)
+    // In production, always use proper SSL certificates
+    'disable_ssl_verification' => true // Set to false in production!
+];
+
