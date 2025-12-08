@@ -20,12 +20,19 @@ try {
     }
     $resultSubmissions = fetchStudentRecentSubmissions($conn, $studentId, null);
     $submissionIds = array_column($resultSubmissions, 'submission_id');
-    $answerStats = fetchSubmissionAnswerStats($db, $submissionIds);
-    $upcomingQuizzes = fetchStudentUpcomingQuizzes($db, $studentId, 5);
+    $answerStats = fetchSubmissionAnswerStats($conn, $submissionIds);
+    $upcomingQuizzes = fetchStudentUpcomingQuizzes($conn, $studentId, 5);
     $notifications = buildStudentNotifications($resultSubmissions, $upcomingQuizzes);
     $notificationCount = count($notifications);
 } catch (Throwable $e) {
     error_log('Student results fetch error: ' . $e->getMessage());
+    // Set error message for user display
+    $resultSubmissions = [];
+    $answerStats = [];
+    $upcomingQuizzes = [];
+    $notifications = [];
+    $notificationCount = 0;
+    $errorMessage = 'Unable to load results. Please try again later.';
 }
 ?>
 <!DOCTYPE html>
@@ -279,7 +286,11 @@ try {
                         </div>
                     </div>
                     <div class="content-card-body">
-                        <?php if (empty($resultSubmissions)): ?>
+                        <?php if (isset($errorMessage)): ?>
+                            <div class="alert alert-danger mb-0">
+                                <i class="bi bi-exclamation-circle me-2"></i><?php echo htmlspecialchars($errorMessage); ?>
+                            </div>
+                        <?php elseif (empty($resultSubmissions)): ?>
                             <div class="alert alert-info mb-0">
                                 <i class="bi bi-info-circle me-2"></i>No examination results available yet.
                             </div>

@@ -13,15 +13,24 @@
 
     // Calculate API path based on current location
     function getApiPath() {
+        // For student module, always use relative path
         const currentPath = window.location.pathname;
-        const depth = (currentPath.match(/\//g) || []).length - 1;
-        const basePath = depth > 1 ? '../' : './';
-        return basePath + 'api/student/activity.php';
+        if (currentPath.includes('/student/')) {
+            return '../api/student/activity.php';
+        }
+        return 'api/student/activity.php';
     }
 
     // Send heartbeat to server
     function sendHeartbeat() {
-        fetch(getApiPath(), {
+        const apiPath = getApiPath();
+        // Skip heartbeat if path is invalid
+        if (!apiPath || apiPath.includes('undefined')) {
+            console.warn('Invalid API path for heartbeat, skipping...');
+            return;
+        }
+        
+        fetch(apiPath, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -32,7 +41,10 @@
             }),
             credentials: 'same-origin'
         }).catch(error => {
-            console.error('Heartbeat failed:', error);
+            // Only log if it's not a redirect error (which is expected in some cases)
+            if (!error.message.includes('redirect')) {
+                console.warn('Heartbeat failed:', error.message);
+            }
         });
     }
 

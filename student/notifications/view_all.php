@@ -8,9 +8,16 @@ $upcomingQuizzes = [];
 $notifications = [];
 
 try {
-    $db = Database::getInstance()->getConnection();
-    $recentSubmissions = fetchStudentRecentSubmissions($db, $studentId, 20);
-    $upcomingQuizzes = fetchStudentUpcomingQuizzes($db, $studentId, 20);
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    $recentSubmissions = fetchStudentRecentSubmissions($conn, $studentId, 20);
+    $upcomingQuizzes = fetchStudentUpcomingQuizzes($conn, $studentId, 20);
     $notifications = buildStudentNotifications($recentSubmissions, $upcomingQuizzes);
 } catch (Throwable $e) {
     error_log('Student notifications fetch error: ' . $e->getMessage());

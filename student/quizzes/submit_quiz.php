@@ -4,7 +4,14 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/branding_loader.php';
 
 $quizId = isset($_GET['quiz_id']) ? intval($_GET['quiz_id']) : 0;
-$studentId = $_SESSION['user_id'] ?? 0;
+$studentId = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
+
+// Validate inputs before processing
+if ($quizId <= 0 || $studentId <= 0) {
+    header('Location: available_quizzes.php');
+    exit;
+}
+
 $submission = null;
 $quiz = null;
 $aiEvaluations = [];
@@ -15,10 +22,15 @@ $aiMarks = 0;
 $aiTotalMarks = 0;
 $aiPercentage = 0;
 
-if ($quizId > 0 && $studentId > 0) {
-    try {
-        $db = Database::getInstance();
-        $conn = $db->getConnection();
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
         
         // Get latest submission for this quiz and student
         $stmt = $conn->prepare("
@@ -59,9 +71,11 @@ if ($quizId > 0 && $studentId > 0) {
             $aiTotalMarks = floatval($submission['total_max_marks'] ?? 0);
             $aiPercentage = floatval($submission['ai_percentage'] ?? 0);
         }
-    } catch (Exception $e) {
-        error_log("Error fetching submission data: " . $e->getMessage());
-    }
+} catch (Exception $e) {
+    error_log("Error fetching submission data: " . $e->getMessage());
+    // Redirect on error
+    header('Location: available_quizzes.php');
+    exit;
 }
 ?>
 <!DOCTYPE html>

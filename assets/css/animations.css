@@ -265,13 +265,24 @@
 
 /* Loading Spinner Animation */
 @keyframes spin {
-    to {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
         transform: rotate(360deg);
     }
 }
 
 .spinner-border {
-    animation: spin 0.75s linear infinite;
+    animation: spin 0.75s linear infinite !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    border-width: 0.15em !important;
+    border-style: solid !important;
+    border-color: currentColor transparent currentColor transparent !important;
+    border-radius: 50% !important;
+    width: 1rem !important;
+    height: 1rem !important;
 }
 
 /* Smooth Scroll */

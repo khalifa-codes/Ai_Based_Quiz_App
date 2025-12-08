@@ -123,7 +123,7 @@
                         <a href="forgot_password.php" class="auth-link">Forgot password?</a>
                     </div>
 
-                    <button type="submit" class="btn btn-primary w-100 mb-3" id="loginSubmitBtn" disabled>
+                    <button type="submit" class="btn btn-primary w-100 mb-3" id="loginSubmitBtn" disabled data-text="Login as Teacher">
                         <span class="btn-text" id="loginButtonText">Login as Teacher</span>
                         <span class="btn-spinner spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                     </button>
@@ -225,6 +225,10 @@
                     }
                     if (loginButtonText) {
                         loginButtonText.textContent = config.buttonText;
+                    }
+                    // Update data-text attribute for width maintenance
+                    if (loginSubmitBtn) {
+                        loginSubmitBtn.setAttribute('data-text', config.buttonText);
                     }
                 }
             }

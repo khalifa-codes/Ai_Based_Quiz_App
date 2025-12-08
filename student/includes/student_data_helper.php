@@ -59,7 +59,7 @@ function fetchStudentStats(PDO $conn, int $studentId): array
 
     $stats['completed_quizzes'] = $completed;
     $stats['in_progress'] = $inProgress;
-    $stats['pending_quizzes'] = max(0, $stats['total_quizzes'] - $completed);
+    $stats['pending_quizzes'] = max(0, $stats['total_quizzes'] - $completed - $inProgress);
 
     $scoreStmt = $conn->prepare("
         SELECT q.total_marks, qs.total_score, qs.percentage

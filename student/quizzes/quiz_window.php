@@ -4,7 +4,13 @@ require_once '../../config/database.php';
 require_once '../../includes/security_helpers.php';
 
 $quizId = isset($_GET['id']) ? intval($_GET['id']) : 0;
-$studentId = intval($_SESSION['user_id']);
+$studentId = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
+
+// Validate inputs
+if ($quizId <= 0 || $studentId <= 0) {
+    header('Location: available_quizzes.php');
+    exit;
+}
 
 $quiz = null;
 $submission = null;
@@ -17,18 +23,17 @@ $timeRemaining = 0;
 $submittedAnswers = [];
 $postponedQuestions = [];
 
-if ($quizId > 0) {
-    try {
+try {
         $dbInstance = Database::getInstance();
         if (!$dbInstance) {
             throw new Exception('Database instance could not be created');
         }
-        $db = $dbInstance->getConnection();
-        if (!$db) {
+        $conn = $dbInstance->getConnection();
+        if (!$conn) {
             throw new Exception('Database connection could not be established');
         }
         
-        $stmt = $db->prepare("
+        $stmt = $conn->prepare("
             SELECT qs.id as submission_id, qs.started_at, qs.status, qs.quiz_id,
                    q.id as quiz_id, q.title, q.subject, q.duration, q.total_questions, 
                    q.ai_provider, q.ai_model
@@ -53,14 +58,14 @@ if ($quizId > 0) {
             ];
             
             // Use server time consistently - started_at is in database timezone (UTC)
-            $startTime = strtotime($submission['started_at']);
-            if ($startTime === false) {
+            $startTime = !empty($submission['started_at']) ? strtotime($submission['started_at']) : false;
+            if ($startTime === false || $startTime <= 0) {
                 $startTime = $serverTime; // Fallback to current time if parsing fails
             }
-            $elapsed = $serverTime - $startTime;
+            $elapsed = max(0, $serverTime - $startTime);
             $timeRemaining = max(0, $submission['duration'] - $elapsed);
             
-            $stmt = $db->prepare("
+            $stmt = $conn->prepare("
                 SELECT id, question_text, question_type, question_order, marks, max_marks, criteria
                 FROM questions
                 WHERE quiz_id = ?
@@ -70,12 +75,17 @@ if ($quizId > 0) {
             $questions = $stmt->fetchAll();
             
             foreach ($questions as &$question) {
-                if ($question['criteria']) {
-                    $question['criteria'] = json_decode($question['criteria'], true);
+                if (!empty($question['criteria']) && is_string($question['criteria'])) {
+                    $decoded = json_decode($question['criteria'], true);
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                        $question['criteria'] = $decoded;
+                    } else {
+                        $question['criteria'] = null;
+                    }
                 }
                 
                 if ($question['question_type'] === 'multiple_choice' || $question['question_type'] === 'true_false') {
-                    $stmt = $db->prepare("
+                    $stmt = $conn->prepare("
                         SELECT option_text, option_value, is_correct, option_order
                         FROM question_options
                         WHERE question_id = ?
@@ -91,20 +101,15 @@ if ($quizId > 0) {
             
             if (count($questions) > 0) {
                 $firstQuestion = $questions[0];
-                
-                if ($firstQuestion['question_type'] === 'multiple_choice' || $firstQuestion['question_type'] === 'true_false') {
-                    $stmt = $db->prepare("
-                        SELECT option_text, option_value, is_correct
-                        FROM question_options
-                        WHERE question_id = ?
-                        ORDER BY option_order ASC, option_value ASC
-                    ");
-                    $stmt->execute([$firstQuestion['id']]);
-                    $firstQuestionOptions = $stmt->fetchAll();
+                // Use options already fetched in the loop above (no redundant query needed)
+                if (isset($firstQuestion['options'])) {
+                    $firstQuestionOptions = $firstQuestion['options'];
+                } else {
+                    $firstQuestionOptions = [];
                 }
             }
             
-            $stmt = $db->prepare("
+            $stmt = $conn->prepare("
                 SELECT question_id, answer_value, is_postponed
                 FROM student_answers
                 WHERE submission_id = ?
@@ -118,7 +123,7 @@ if ($quizId > 0) {
             }
             
         } else {
-            $stmt = $db->prepare("
+            $stmt = $conn->prepare("
                 SELECT id, title, subject, duration, total_questions, status, ai_provider, ai_model
                 FROM quizzes
                 WHERE id = ? AND status = 'published'
@@ -135,12 +140,8 @@ if ($quizId > 0) {
             exit;
         }
         
-    } catch (Exception $e) {
-        error_log("Error loading quiz data: " . $e->getMessage());
-        header('Location: available_quizzes.php');
-        exit;
-    }
-} else {
+} catch (Exception $e) {
+    error_log("Error loading quiz data: " . $e->getMessage());
     header('Location: available_quizzes.php');
     exit;
 }
@@ -184,7 +185,7 @@ if ($quizId > 0) {
         .quiz-header {
             background: var(--bg-secondary);
             border-bottom: 2px solid var(--border-color);
-            padding: 1rem 2rem;
+            padding: 0.75rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -192,20 +193,20 @@ if ($quizId > 0) {
         }
         .quiz-title-section h2 {
             margin: 0;
-            font-size: 1.5rem;
+            font-size: 1.35rem;
             font-weight: 600;
             color: var(--text-primary);
         }
         .quiz-title-section p {
-            margin: 0.25rem 0 0 0;
-            font-size: 0.9rem;
+            margin: 0.2rem 0 0 0;
+            font-size: 0.85rem;
             color: var(--text-secondary);
         }
         .quiz-timer {
             display: flex;
             align-items: center;
-            gap: 1rem;
-            padding: 0.75rem 1.5rem;
+            gap: 0.75rem;
+            padding: 0.6rem 1.25rem;
             background: var(--bg-primary);
             border: 2px solid var(--primary-color);
             border-radius: 12px;
@@ -235,7 +236,7 @@ if ($quizId > 0) {
         .quiz-progress {
             background: var(--bg-secondary);
             border-bottom: 1px solid var(--border-color);
-            padding: 0.75rem 2rem;
+            padding: 0.6rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -263,7 +264,7 @@ if ($quizId > 0) {
         .quiz-content {
             flex: 1;
             overflow-y: auto;
-            padding: 2rem;
+            padding: 2.5rem 2rem;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -277,6 +278,7 @@ if ($quizId > 0) {
             border-radius: 16px;
             padding: 2.5rem;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin: 1.5rem 0;
         }
         .question-number {
             font-size: 0.9rem;

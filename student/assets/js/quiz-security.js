@@ -100,6 +100,10 @@
     let validationInterval = null;
     const VALIDATION_INTERVAL = 30000; // 30 seconds
     
+    // Warning counters for minimize and tab switch
+    let minimizeWarningCount = 0;
+    let tabSwitchWarningCount = 0;
+    
     // Check if security should be active
     function isSecurityReady() {
         const quizStarted = sessionStorage.getItem('quizStarted') === 'true';
@@ -139,17 +143,51 @@
     }, 200);
 
     // ============================================
-    // TAB SWITCH DETECTION
+    // TAB SWITCH DETECTION (Warning first, submit on 2nd)
     // ============================================
     document.addEventListener('visibilitychange', function() {
         if (!isSecurityReady() || hasSubmitted) return;
         if (document.hidden) {
-            validateWithServerAndSubmit('tab_switch', 'You switched tabs. The examination has been automatically submitted.');
+            tabSwitchWarningCount++;
+            if (tabSwitchWarningCount === 1) {
+                // First time: Show warning only
+                alert('Warning: You switched tabs. If you do this again, your examination will be automatically submitted.');
+            } else if (tabSwitchWarningCount >= 2) {
+                // Second time: Submit quiz
+                validateWithServerAndSubmit('tab_switch', 'You switched tabs again. The examination has been automatically submitted.');
+            }
         }
+    }, true);
+    
+    // ============================================
+    // WINDOW MINIMIZE DETECTION (Warning first, submit on 2nd)
+    // ============================================
+    let windowBlurTime = null;
+    window.addEventListener('blur', function() {
+        if (!isSecurityReady() || hasSubmitted) return;
+        windowBlurTime = Date.now();
+    }, true);
+    
+    window.addEventListener('focus', function() {
+        if (!isSecurityReady() || hasSubmitted || !windowBlurTime) return;
+        
+        // Check if window was minimized (blurred for more than 1 second)
+        const blurDuration = Date.now() - windowBlurTime;
+        if (blurDuration > 1000) {
+            minimizeWarningCount++;
+            if (minimizeWarningCount === 1) {
+                // First time: Show warning only
+                alert('Warning: You minimized the window. If you do this again, your examination will be automatically submitted.');
+            } else if (minimizeWarningCount >= 2) {
+                // Second time: Submit quiz
+                validateWithServerAndSubmit('window_minimize', 'You minimized the window again. The examination has been automatically submitted.');
+            }
+        }
+        windowBlurTime = null;
     }, true);
 
     // ============================================
-    // BACK BUTTON PREVENTION
+    // BACK BUTTON PREVENTION (Block only, no submit, no warning)
     // ============================================
     (function() {
         history.replaceState(null, null, window.location.href);
@@ -158,24 +196,26 @@
     })();
     
     window.addEventListener('popstate', function(event) {
-        const quizStarted = sessionStorage.getItem('quizStarted') === 'true';
+        if (!isSecurityReady() || hasSubmitted) {
+            history.replaceState({page: 'quiz', preventBack: true}, null, window.location.href);
+            history.pushState({page: 'quiz', preventBack: true}, null, window.location.href);
+            history.pushState({page: 'quiz', preventBack: true}, null, window.location.href);
+            return;
+        }
         
+        // Block back button - silent block, no warning
         history.replaceState({page: 'quiz', preventBack: true}, null, window.location.href);
         history.pushState({page: 'quiz', preventBack: true}, null, window.location.href);
         history.pushState({page: 'quiz', preventBack: true}, null, window.location.href);
-        
-        if (quizStarted && !hasSubmitted) {
-            validateWithServerAndSubmit('back_button', 'You attempted to navigate back. The examination has been automatically submitted.');
-        }
     }, true);
 
     // ============================================
-    // KEYBOARD SHORTCUTS DISABLING
+    // KEYBOARD SHORTCUTS DISABLING (Block only, no submit, no warning)
     // ============================================
     document.addEventListener('keydown', function(e) {
         if (!isSecurityReady()) return;
         
-        // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+        // Block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (Inspect/DevTools) - silent block
         if (e.key === 'F12' || 
             ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C'))) {
             e.preventDefault();
@@ -183,7 +223,7 @@
             return false;
         }
         
-        // Disable Ctrl+R / F5 (refresh) - but allow during grace period
+        // Block Ctrl+R / F5 (refresh) - but allow during grace period - silent block
         if (((e.ctrlKey || e.metaKey) && e.key === 'r') || e.key === 'F5') {
             const quizStartTime = parseInt(sessionStorage.getItem('quizStartTime') || '0');
             const timeSinceStart = Date.now() - quizStartTime;
@@ -192,13 +232,25 @@
             }
             e.preventDefault();
             e.stopPropagation();
-            validateWithServerAndSubmit('refresh', 'You attempted to refresh the page. The examination has been automatically submitted.');
+            return false;
+        }
+        
+        // Block all other common shortcuts (Ctrl+W, Ctrl+N, Alt+F4, etc.) - silent block
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'n' || e.key === 't' || e.key === 'Tab')) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+        
+        if (e.altKey && e.key === 'F4') {
+            e.preventDefault();
+            e.stopPropagation();
             return false;
         }
     }, true);
 
     // ============================================
-    // RIGHT-CLICK PREVENTION
+    // RIGHT-CLICK PREVENTION (Block only, no submit, no warning)
     // ============================================
     document.addEventListener('contextmenu', function(e) {
         // ALWAYS allow right-click on interactive elements
@@ -209,14 +261,14 @@
         
         if (!isSecurityReady()) return;
         
+        // Block right click - silent block, no warning
         e.preventDefault();
         e.stopPropagation();
-        validateWithServerAndSubmit('right_click', 'Right-click was detected. The examination has been automatically submitted.');
         return false;
     }, false);
 
     // ============================================
-    // DEVELOPER TOOLS DETECTION
+    // DEVELOPER TOOLS DETECTION (Block only, no submit, no warning)
     // ============================================
     let devtoolsDetectionCount = 0;
     const DEVMTOOLS_THRESHOLD = 2;
@@ -240,10 +292,8 @@
         if (devtoolsOpen) {
             devtoolsDetectionCount++;
             if (devtoolsDetectionCount >= DEVMTOOLS_THRESHOLD) {
-                validateWithServerAndSubmit('devtools', 'Developer tools were detected. The examination has been automatically submitted.');
-                if (devtoolsCheckInterval) {
-                    clearInterval(devtoolsCheckInterval);
-                }
+                // Block devtools - silent block, no warning
+                devtoolsDetectionCount = 0; // Reset counter
             }
         } else {
             devtoolsDetectionCount = 0;
@@ -268,6 +318,74 @@
         e.stopPropagation();
         return false;
     }, true);
+    
+    // ============================================
+    // TEXT SELECTION DISABLING (Mouse selection)
+    // ============================================
+    document.addEventListener('selectstart', function(e) {
+        if (!isSecurityReady()) return;
+        // Allow selection in input fields and textareas
+        if (e.target.matches('input, textarea')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    }, true);
+    
+    document.addEventListener('mousedown', function(e) {
+        if (!isSecurityReady()) return;
+        // Allow mouse down on interactive elements
+        if (e.target.matches('input, textarea, button, .option-label, label, .btn, .option-radio')) return;
+        // Prevent text selection drag
+        if (e.detail > 1) {
+            e.preventDefault();
+            return false;
+        }
+    }, true);
+    
+    // Disable text selection via CSS when security is active
+    function disableTextSelection() {
+        if (!isSecurityReady()) return;
+        const style = document.createElement('style');
+        style.id = 'quiz-security-no-select';
+        style.textContent = `
+            .quiz-container * {
+                -webkit-user-select: none !important;
+                -moz-user-select: none !important;
+                -ms-user-select: none !important;
+                user-select: none !important;
+            }
+            .quiz-container input,
+            .quiz-container textarea,
+            .quiz-container .option-label,
+            .quiz-container .option-text {
+                -webkit-user-select: text !important;
+                -moz-user-select: text !important;
+                -ms-user-select: text !important;
+                user-select: text !important;
+            }
+        `;
+        if (!document.getElementById('quiz-security-no-select')) {
+            document.head.appendChild(style);
+        }
+    }
+    
+    // Apply text selection disable after security is active
+    setTimeout(function() {
+        if (isSecurityReady()) {
+            disableTextSelection();
+        }
+    }, GRACE_PERIOD);
+    
+    // Re-check periodically
+    let selectionCheckInterval = setInterval(function() {
+        if (hasSubmitted) {
+            clearInterval(selectionCheckInterval);
+            return;
+        }
+        if (isSecurityReady()) {
+            disableTextSelection();
+        }
+    }, 500);
 
     // ============================================
     // PERIODIC VALIDATION

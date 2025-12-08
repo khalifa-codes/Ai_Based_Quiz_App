@@ -21,14 +21,12 @@ try {
         throw new Exception('Database connection could not be established');
     }
     
-    // Fetch all published quizzes
+    // Optimized: Fetch all published quizzes with question count using subquery
     $stmt = $conn->prepare("
         SELECT q.id, q.title, q.subject, q.duration, q.total_questions, q.created_at,
-               COUNT(DISTINCT qu.id) as actual_questions
+               COALESCE((SELECT COUNT(*) FROM questions WHERE quiz_id = q.id), 0) as actual_questions
         FROM quizzes q
-        LEFT JOIN questions qu ON q.id = qu.quiz_id
         WHERE q.status = 'published'
-        GROUP BY q.id, q.title, q.subject, q.duration, q.total_questions, q.created_at
         ORDER BY q.created_at DESC
     ");
     $stmt->execute();
@@ -40,17 +38,16 @@ try {
     
     if (!empty($quizIds)) {
         $placeholders = implode(',', array_fill(0, count($quizIds), '?'));
+        // Optimized query: Use window function approach or simpler subquery
         $submissionStmt = $conn->prepare("
             SELECT qs.id, qs.quiz_id, qs.status, qs.submitted_at, qs.started_at
             FROM quiz_submissions qs
             INNER JOIN (
-                SELECT quiz_id, MAX(started_at) as max_started_at
+                SELECT quiz_id, MAX(id) as max_id
                 FROM quiz_submissions
                 WHERE quiz_id IN ($placeholders) AND student_id = ?
                 GROUP BY quiz_id
-            ) latest ON qs.quiz_id = latest.quiz_id 
-                AND qs.started_at = latest.max_started_at
-                AND qs.student_id = ?
+            ) latest ON qs.id = latest.max_id AND qs.student_id = ?
         ");
         $params = array_merge($quizIds, [$studentId, $studentId]);
         $submissionStmt->execute($params);
@@ -76,10 +73,10 @@ try {
         }
     }
     
-    // Fetch notifications for badge count
+    // Fetch notifications for badge count (optimized - reduced data fetch)
     require_once __DIR__ . '/../includes/student_data_helper.php';
-    $recentSubmissions = fetchStudentRecentSubmissions($conn, $studentId, 10);
-    $upcomingQuizzes = fetchStudentUpcomingQuizzes($conn, $studentId, 5);
+    $recentSubmissions = fetchStudentRecentSubmissions($conn, $studentId, 5); // Reduced from 10
+    $upcomingQuizzes = fetchStudentUpcomingQuizzes($conn, $studentId, 3); // Reduced from 5
     $notifications = buildStudentNotifications($recentSubmissions, $upcomingQuizzes);
     $notificationCount = count($notifications);
     

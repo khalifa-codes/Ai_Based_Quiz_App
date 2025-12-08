@@ -1,6 +1,44 @@
 <?php 
 require_once '../auth_check.php';
 require_once '../../includes/security_helpers.php';
+require_once '../../config/database.php';
+
+// Get and validate quiz ID
+$quizId = isset($_GET['id']) ? intval($_GET['id']) : (isset($_GET['quiz_id']) ? intval($_GET['quiz_id']) : 0);
+
+// Validate quiz ID and check if quiz exists
+$quizExists = false;
+$quizData = null;
+
+if ($quizId > 0) {
+    try {
+        $dbInstance = Database::getInstance();
+        if (!$dbInstance) {
+            throw new Exception('Database instance could not be created');
+        }
+        $conn = $dbInstance->getConnection();
+        if (!$conn) {
+            throw new Exception('Database connection could not be established');
+        }
+        // Check if quiz exists and is published
+        $stmt = $conn->prepare("
+            SELECT id, title, subject, duration, total_questions, status 
+            FROM quizzes 
+            WHERE id = ? AND status = 'published'
+        ");
+        $stmt->execute([$quizId]);
+        $quizData = $stmt->fetch(PDO::FETCH_ASSOC);
+        $quizExists = ($quizData !== false);
+    } catch (Exception $e) {
+        error_log("Error checking quiz: " . $e->getMessage());
+    }
+}
+
+// If quiz doesn't exist, redirect to available quizzes
+if (!$quizExists || $quizId <= 0) {
+    header('Location: available_quizzes.php?error=invalid_quiz');
+    exit();
+}
 
 // Generate CSRF token for the page
 $csrfToken = generateCSRFToken();
@@ -298,10 +336,7 @@ $csrfToken = generateCSRFToken();
 
                         <!-- Start Quiz Button -->
                         <div class="start-quiz-btn-container">
-                            <?php
-                            $quizId = isset($_GET['id']) ? intval($_GET['id']) : 1;
-                            ?>
-                            <button type="button" id="startQuizBtn" class="btn btn-primary btn-lg start-quiz-btn" data-quiz-id="<?php echo $quizId; ?>">
+                            <button type="button" id="startQuizBtn" class="btn btn-primary btn-lg start-quiz-btn" data-quiz-id="<?php echo htmlspecialchars($quizId); ?>">
                                 <span id="startQuizBtnText"><i class="bi bi-play-circle-fill"></i> Start Quiz</span>
                             </button>
                             <div id="startQuizError" class="alert alert-danger mt-3 d-none" role="alert"></div>

@@ -138,8 +138,14 @@ $notificationCount = count($notifications);
     <!-- Apply theme immediately to prevent flash -->
     <script>
         (function() {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
+            try {
+                if (document.documentElement) {
+                    const savedTheme = localStorage.getItem('theme') || 'light';
+                    document.documentElement.setAttribute('data-theme', savedTheme);
+                }
+            } catch (e) {
+                console.warn('Theme initialization failed:', e);
+            }
         })();
     </script>
     
@@ -649,11 +655,13 @@ $notificationCount = count($notifications);
     <script src="../assets/js/admin-functions.js"></script>
     <script src="assets/js/common.js"></script>
     <script>
-        const scoreTrendData = <?php echo json_encode($scoreTrendDataset, JSON_UNESCAPED_UNICODE); ?>;
-        const perfDistributionData = <?php echo json_encode($performanceDistributionData, JSON_UNESCAPED_UNICODE); ?>;
+        // Wait for DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            const scoreTrendData = <?php echo json_encode($scoreTrendDataset, JSON_UNESCAPED_UNICODE); ?>;
+            const perfDistributionData = <?php echo json_encode($performanceDistributionData, JSON_UNESCAPED_UNICODE); ?>;
 
-        const performanceCtx = document.getElementById('performanceChart');
-        if (performanceCtx) {
+            const performanceCtx = document.getElementById('performanceChart');
+            if (performanceCtx) {
             new Chart(performanceCtx, {
                 type: 'line',
                 data: {
@@ -744,6 +752,7 @@ $notificationCount = count($notifications);
                 }
             });
         }
+        }); // End of DOMContentLoaded
     </script>
     <!-- Activity Tracker - Session Inactivity Timeout (15 minutes) -->
     <script src="assets/js/activity-tracker.js"></script>

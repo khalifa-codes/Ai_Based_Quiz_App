@@ -205,7 +205,7 @@
                         <div class="invalid-feedback error-message-box" id="agreeTermsError"></div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary w-100 mb-3" id="registerSubmitBtn" disabled>
+                    <button type="submit" class="btn btn-primary w-100 mb-3" id="registerSubmitBtn" disabled data-text="Register as Teacher">
                         <span class="btn-text" id="registerButtonText">Register as Teacher</span>
                         <span class="btn-spinner spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                     </button>
@@ -343,6 +343,11 @@
                     authIcon.className = `bi ${config.icon} auth-icon`;
                     authSubtitle.textContent = config.subtitle;
                     registerButtonText.textContent = config.buttonText;
+                    // Update data-text attribute for width maintenance
+                    const registerSubmitBtn = document.getElementById('registerSubmitBtn');
+                    if (registerSubmitBtn) {
+                        registerSubmitBtn.setAttribute('data-text', config.buttonText);
+                    }
                 }
                 
                 // Show/hide fields based on role

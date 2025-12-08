@@ -19,9 +19,16 @@ $distributionBuckets = [
 ];
 
 try {
-    $db = Database::getInstance()->getConnection();
-    $recentSubmissions = fetchStudentRecentSubmissions($db, $studentId, 20);
-    $upcomingQuizzes = fetchStudentUpcomingQuizzes($db, $studentId, 5);
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    $recentSubmissions = fetchStudentRecentSubmissions($conn, $studentId, 20);
+    $upcomingQuizzes = fetchStudentUpcomingQuizzes($conn, $studentId, 5);
     $notifications = buildStudentNotifications($recentSubmissions, $upcomingQuizzes);
     $notificationCount = count($notifications);
 
@@ -32,7 +39,12 @@ try {
 
     foreach ($chronological as $submission) {
         $labelSource = $submission['submitted_at'] ?? $submission['started_at'];
-        $label = $labelSource ? date('M d', strtotime($labelSource)) : $submission['title'];
+        if (!empty($labelSource)) {
+            $timestamp = strtotime($labelSource);
+            $label = ($timestamp !== false && $timestamp > 0) ? date('M d', $timestamp) : ($submission['title'] ?? 'Unknown');
+        } else {
+            $label = $submission['title'] ?? 'Unknown';
+        }
         $score = $submission['score_percent'];
 
         if ($score !== null) {

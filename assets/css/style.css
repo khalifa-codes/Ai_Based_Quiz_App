@@ -455,6 +455,10 @@ body::before {
     position: relative;
     overflow: hidden;
     color: #ffffff;
+    min-width: fit-content;
+    min-height: 48px;
+    height: auto;
+    box-sizing: border-box;
 }
 
 .btn-primary:hover {
@@ -488,6 +492,9 @@ body::before {
 .btn-spinner {
     margin-left: 0.5rem;
     transition: none !important;
+    animation: spin 0.75s linear infinite !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
 }
 
 .btn-spinner.d-none {
@@ -507,10 +514,59 @@ body::before {
     opacity: 1 !important;
 }
 
+/* Maintain button width and height during loading */
+.btn-primary {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+    position: relative !important;
+    min-height: 48px !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+}
+
+.btn-primary .btn-text {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    line-height: 1.5 !important;
+    height: auto !important;
+    display: inline-block !important;
+}
+
+.btn-primary .btn-spinner {
+    flex-shrink: 0 !important;
+    margin-left: 0 !important;
+    height: 1rem !important;
+    width: 1rem !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+}
+
 .btn-text.d-none {
-    display: none !important;
+    /* Keep text in layout but invisible to maintain button width */
     visibility: hidden !important;
     opacity: 0 !important;
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+}
+
+/* Use a pseudo-element on button to maintain width when text is hidden */
+.btn-primary:has(.btn-text.d-none)::before {
+    content: attr(data-text);
+    visibility: hidden;
+    display: inline-block;
+    white-space: nowrap;
+    height: 0;
+    overflow: hidden;
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 0 0.5rem;
 }
 
 /* Auth Links */
