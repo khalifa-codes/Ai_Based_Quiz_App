@@ -32,9 +32,34 @@ try {
         throw new Exception('Database connection could not be established');
     }
     
-    // Mark notification as read
-    $stmt = $conn->prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND teacher_id = ?");
-    $stmt->execute([$notificationId, $teacherId]);
+    // Get notification details first
+    $getStmt = $conn->prepare("SELECT title, message, type, DATE(created_at) as date_sent FROM notifications WHERE id = ? AND teacher_id = ?");
+    $getStmt->execute([$notificationId, $teacherId]);
+    $notification = $getStmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$notification) {
+        echo json_encode(['success' => false, 'message' => 'Notification not found']);
+        exit();
+    }
+    
+    // Mark all notifications with same title, message, type, and date as read
+    // This handles grouped notifications properly
+    $stmt = $conn->prepare("
+        UPDATE notifications 
+        SET is_read = 1 
+        WHERE teacher_id = ? 
+        AND title = ? 
+        AND message = ? 
+        AND type = ? 
+        AND DATE(created_at) = DATE(?)
+    ");
+    $stmt->execute([
+        $teacherId,
+        $notification['title'],
+        $notification['message'],
+        $notification['type'],
+        $notification['date_sent']
+    ]);
     
     echo json_encode([
         'success' => true,

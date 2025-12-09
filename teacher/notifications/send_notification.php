@@ -1,4 +1,47 @@
-<?php require_once '../auth_check.php'; ?>
+<?php 
+require_once '../auth_check.php';
+require_once __DIR__ . '/../../config/database.php';
+
+$teacherId = (int)($_SESSION['user_id'] ?? 0);
+$quizzes = [];
+$departments = [];
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    
+    // Fetch all quizzes created by teacher
+    $quizStmt = $conn->prepare("
+        SELECT id, title, subject 
+        FROM quizzes 
+        WHERE created_by = ? 
+        ORDER BY created_at DESC
+    ");
+    $quizStmt->execute([$teacherId]);
+    $quizzes = $quizStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Fetch all departments/organizations
+    $deptStmt = $conn->prepare("
+        SELECT id, name 
+        FROM organizations 
+        WHERE status = 'active'
+        ORDER BY name ASC
+    ");
+    $deptStmt->execute();
+    $departments = $deptStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+} catch (Exception $e) {
+    error_log('Send Notification Page Error: ' . $e->getMessage());
+    $quizzes = [];
+    $departments = [];
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -147,7 +190,7 @@
                         <div class="notification-wrapper" style="position: relative;">
                             <button class="topbar-btn notification-btn" id="notificationBtn" title="Notifications" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 40px !important; height: 40px !important; position: relative !important; flex-shrink: 0 !important; margin: 0 !important;">
                                 <i class="bi bi-bell" style="font-size: 1.3rem !important;"></i>
-                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">3</span>
+                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff); z-index: 10;"></span>
                             </button>
                             <!-- Notification Dropdown -->
                             <div class="notification-dropdown" id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 10px); right: 0; width: 380px; max-width: calc(100vw - 40px); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden;">
@@ -156,41 +199,9 @@
                                     <a href="view_all.php" class="view-all-link" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem; font-weight: 500;">View All</a>
                                 </div>
                                 <div class="notification-dropdown-body" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease; background: var(--primary-light, rgba(13, 110, 253, 0.05));">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-megaphone"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">New Examination Schedule</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Data Structures Midterm examination has been scheduled for next week.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">2 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--success-color, #198754); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-check-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Results Published</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Database Systems Assignment results are now available for review.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">5 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--info-color, #0dcaf0); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-info-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">System Update</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">New features have been added to the examination system.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">1 day ago</span>
-                                            </div>
-                                        </div>
+                                    <!-- Notifications will be loaded dynamically via notifications.js -->
+                                    <div class="text-center p-3" style="color: var(--text-muted);">
+                                        <i class="bi bi-hourglass-split"></i> Loading notifications...
                                     </div>
                                 </div>
                                 <div class="notification-dropdown-footer" style="padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); text-align: center; background: var(--bg-secondary);">
@@ -250,9 +261,9 @@
                                         <label class="admin-form-label">Related Examination</label>
                                         <select class="admin-form-control" id="relatedQuiz">
                                             <option value="">Select Examination (Optional)</option>
-                                            <option value="1">Data Structures Midterm</option>
-                                            <option value="2">Database Systems Assignment</option>
-                                            <option value="3">Computer Networks Quiz</option>
+                                            <?php foreach ($quizzes as $quiz): ?>
+                                            <option value="<?php echo $quiz['id']; ?>"><?php echo htmlspecialchars($quiz['title'] . ' (' . ($quiz['subject'] ?? 'N/A') . ')'); ?></option>
+                                            <?php endforeach; ?>
                                         </select>
                                     </div>
                                 </div>
@@ -268,9 +279,9 @@
                                         <select class="admin-form-control" id="recipients" required>
                                             <option value="">Select Recipients</option>
                                             <option value="all">All Students</option>
-                                            <option value="cs-a">CS Dept - Section A</option>
-                                            <option value="cs-b">CS Dept - Section B</option>
-                                            <option value="cs-c">CS Dept - Section C</option>
+                                            <?php foreach ($departments as $dept): ?>
+                                            <option value="<?php echo $dept['id']; ?>"><?php echo htmlspecialchars($dept['name']); ?></option>
+                                            <?php endforeach; ?>
                                         </select>
                                     </div>
                                 </div>
@@ -324,13 +335,98 @@
             });
         }
         
-        // Form Submission
-        document.getElementById('notificationForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            // TODO: Implement API call to send notification
-            alert('Notification sent successfully! (Backend integration pending)');
-            this.reset();
-        });
+        // Form Submission - Permanent Backend Implementation
+        const notificationForm = document.getElementById('notificationForm');
+        if (notificationForm) {
+            notificationForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const subject = document.getElementById('notificationSubject')?.value.trim() || '';
+                const message = document.getElementById('notificationMessage')?.value.trim() || '';
+                const recipients = document.getElementById('recipients')?.value || '';
+                const relatedQuiz = document.getElementById('relatedQuiz')?.value || '';
+                const priority = document.getElementById('notificationPriority')?.value || 'medium';
+                
+                // Validation
+                if (!subject) {
+                    alert('Please enter a notification subject');
+                    return;
+                }
+                
+                if (!message) {
+                    alert('Please enter a notification message');
+                    return;
+                }
+                
+                if (!recipients) {
+                    alert('Please select recipients');
+                    return;
+                }
+                
+                // Prepare recipients array
+                const recipientsArray = recipients === 'all' ? ['all'] : [recipients];
+                
+                // Prepare form data
+                const formData = {
+                    title: subject,
+                    message: message,
+                    type: selectedType,
+                    recipients: recipientsArray,
+                    quiz_id: relatedQuiz ? parseInt(relatedQuiz) : null,
+                    priority: priority
+                };
+                
+                // Disable submit button and show loading
+                const submitBtn = this.querySelector('button[type="submit"]');
+                const originalBtnText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending...';
+                
+                // Send notification via API
+                fetch('../../api/teacher/send_notification.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnText;
+                    
+                    if (data.success) {
+                        alert(data.message || 'Notification sent successfully!');
+                        // Reset form
+                        notificationForm.reset();
+                        announcementCard.classList.add('active');
+                        resultsCard.classList.remove('active');
+                        selectedType = 'announcement';
+                        
+                        // Refresh notifications if notifications.js is loaded
+                        if (typeof window.loadNotifications === 'function') {
+                            window.loadNotifications();
+                        } else if (typeof loadNotifications === 'function') {
+                            loadNotifications();
+                        }
+                    } else {
+                        alert(data.message || 'Error sending notification. Please try again.');
+                    }
+                })
+                .catch(error => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnText;
+                    console.error('Error:', error);
+                    console.error('Error details:', error.message);
+                    alert('Error sending notification: ' + error.message + '. Please check console for details.');
+                });
+            });
+        }
         
         // Clear Form
         const clearFormBtn = document.getElementById('clearFormBtn');

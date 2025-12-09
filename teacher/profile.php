@@ -360,12 +360,50 @@ try {
         }
         if (saveProfileBtn) {
             saveProfileBtn.addEventListener('click', function() {
-                // TODO: Implement save functionality
-                alert('Profile updated successfully!');
-                profileInputs.forEach(input => input.setAttribute('readonly', 'readonly'));
-                editProfileBtn.style.display = 'inline-block';
-                saveProfileBtn.style.display = 'none';
-                cancelEditBtn.style.display = 'none';
+                const name = document.getElementById('teacherName')?.value || '';
+                const phone = document.getElementById('teacherPhone')?.value || '';
+                
+                if (!name.trim()) {
+                    alert('Name is required');
+                    return;
+                }
+                
+                // Disable button during save
+                this.disabled = true;
+                const originalText = this.innerHTML;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+                
+                fetch('../api/teacher/update_profile.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        phone: phone
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    
+                    if (data.success) {
+                        alert('Profile updated successfully!');
+                        profileInputs.forEach(input => input.setAttribute('readonly', 'readonly'));
+                        editProfileBtn.style.display = 'inline-block';
+                        saveProfileBtn.style.display = 'none';
+                        cancelEditBtn.style.display = 'none';
+                    } else {
+                        alert(data.message || 'Error updating profile');
+                    }
+                })
+                .catch(error => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    console.error('Error:', error);
+                    alert('Error updating profile. Please try again.');
+                });
             });
         }
     </script>

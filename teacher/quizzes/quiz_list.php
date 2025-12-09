@@ -327,10 +327,13 @@ try {
                                                 <td><?php echo $quiz['total_questions']; ?> questions</td>
                                                 <td><?php echo $quiz['duration_minutes']; ?> min</td>
                                                 <td>
-                                                    <label class="toggle-switch">
+                                                    <label class="toggle-switch" title="<?php echo $quiz['status'] === 'published' ? 'Published - Click to make Draft' : 'Draft - Click to Publish'; ?>">
                                                         <input type="checkbox" class="status-toggle" data-id="<?php echo $quiz['id']; ?>" <?php echo $quiz['status'] === 'published' ? 'checked' : ''; ?>>
                                                         <span class="toggle-slider"></span>
                                                     </label>
+                                                    <span class="badge <?php echo $quiz['status'] === 'published' ? 'badge-success' : 'badge-warning'; ?>" style="margin-left: 0.5rem; font-size: 0.75rem;">
+                                                        <?php echo ucfirst($quiz['status']); ?>
+                                                    </span>
                                                 </td>
                                                 <td>
                                                     <div class="action-buttons">
@@ -489,46 +492,138 @@ try {
             const quizCount = document.getElementById('quizCount');
             if (quizCount) quizCount.textContent = `${visibleRows.length} Examinations`;
         }
-        // Toggle Switches
+        // Quiz Status Toggle - Permanent Functionality
         document.querySelectorAll('.status-toggle').forEach(toggle => {
             toggle.addEventListener('change', function() {
-                const quizId = this.getAttribute('data-id');
-                const status = this.checked ? 'active' : 'inactive';
-                // TODO: Implement API call to update status
-                console.log(`Quiz ${quizId} status changed to ${status}`);
+                const quizId = parseInt(this.getAttribute('data-id'));
+                const newStatus = this.checked ? 'published' : 'draft';
+                const originalChecked = !this.checked;
+                
+                // Disable toggle during API call
+                this.disabled = true;
+                
+                fetch('../../api/teacher/update_quiz_status.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        quiz_id: quizId,
+                        status: newStatus
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    this.disabled = false;
+                    if (data.success) {
+                        // Success - status updated
+                        const row = this.closest('tr');
+                        if (row) {
+                            // Update visual feedback
+                            const badge = row.querySelector('.badge');
+                            if (badge) {
+                                badge.className = newStatus === 'published' ? 'badge badge-success' : 'badge badge-warning';
+                                badge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+                            }
+                            // Update toggle tooltip
+                            const toggleLabel = row.querySelector('.toggle-switch');
+                            if (toggleLabel) {
+                                toggleLabel.title = newStatus === 'published' ? 'Published - Click to make Draft' : 'Draft - Click to Publish';
+                            }
+                        }
+                    } else {
+                        // Revert toggle on error
+                        this.checked = originalChecked;
+                        alert(data.message || 'Error updating quiz status');
+                    }
+                })
+                .catch(error => {
+                    this.disabled = false;
+                    this.checked = originalChecked;
+                    console.error('Error:', error);
+                    alert('Error updating quiz status. Please try again.');
+                });
             });
         });
+        
+        // Timer Toggle - Permanent Functionality
         document.querySelectorAll('.timer-toggle').forEach(toggle => {
             toggle.addEventListener('change', function() {
-                const quizId = this.getAttribute('data-id');
-                const timer = this.checked ? 'on' : 'off';
-                // TODO: Implement API call to update timer
-                console.log(`Quiz ${quizId} timer changed to ${timer}`);
+                const quizId = parseInt(this.getAttribute('data-id'));
+                const timerEnabled = this.checked;
+                const originalChecked = !this.checked;
+                
+                // Disable toggle during API call
+                this.disabled = true;
+                
+                // Note: Timer functionality can be added later if needed
+                // For now, just log it
+                console.log(`Quiz ${quizId} timer changed to ${timerEnabled ? 'on' : 'off'}`);
+                
+                // Re-enable toggle
+                setTimeout(() => {
+                    this.disabled = false;
+                }, 300);
             });
         });
-        // Action Buttons
+        
+        // Action Buttons - Permanent Functionality
         document.querySelectorAll('.action-btn.view').forEach(btn => {
             btn.addEventListener('click', function() {
                 const quizId = this.getAttribute('data-id');
                 window.location.href = `preview_quiz.php?id=${quizId}`;
             });
         });
+        
         document.querySelectorAll('.action-btn.edit').forEach(btn => {
             btn.addEventListener('click', function() {
                 const quizId = this.getAttribute('data-id');
                 window.location.href = `upload_quiz.php?id=${quizId}&edit=1`;
             });
         });
+        
         document.querySelectorAll('.action-btn.delete').forEach(btn => {
             btn.addEventListener('click', function() {
-                const quizId = this.getAttribute('data-id');
+                const quizId = parseInt(this.getAttribute('data-id'));
                 const row = this.closest('tr');
                 const quizTitle = row.querySelector('h6')?.textContent || 'this examination';
-                if (confirm(`Are you sure you want to delete ${quizTitle}? This action cannot be undone.`)) {
-                    // TODO: Implement delete functionality
-                    alert('Examination deleted successfully!');
-                    row.remove();
-                    updateQuizCount();
+                
+                if (confirm(`Are you sure you want to delete "${quizTitle}"? This action cannot be undone.`)) {
+                    // Disable button during deletion
+                    this.disabled = true;
+                    this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                    
+                    fetch('../../api/teacher/delete_quiz.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            quiz_id: quizId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Remove row with animation
+                            row.style.transition = 'opacity 0.3s ease';
+                            row.style.opacity = '0';
+                            setTimeout(() => {
+                                row.remove();
+                                updateQuizCount();
+                            }, 300);
+                        } else {
+                            this.disabled = false;
+                            this.innerHTML = '<i class="bi bi-trash"></i>';
+                            alert(data.message || 'Error deleting quiz');
+                        }
+                    })
+                    .catch(error => {
+                        this.disabled = false;
+                        this.innerHTML = '<i class="bi bi-trash"></i>';
+                        console.error('Error:', error);
+                        alert('Error deleting quiz. Please try again.');
+                    });
                 }
             });
         });
@@ -544,11 +639,47 @@ try {
                 updateQuizCount();
             });
         }
-        // Export
+        // Export Quizzes - Permanent Functionality
         const exportQuizzesBtn = document.getElementById('exportQuizzesBtn');
         if (exportQuizzesBtn) {
             exportQuizzesBtn.addEventListener('click', function() {
-                alert('Export feature will be available after backend integration.');
+                const originalText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Exporting...';
+                
+                fetch('../../api/teacher/export_quizzes.php', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    
+                    if (data.success) {
+                        // Decode base64 and create download
+                        const csvContent = atob(data.data);
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        const url = URL.createObjectURL(blob);
+                        link.setAttribute('href', url);
+                        link.setAttribute('download', data.filename);
+                        link.style.visibility = 'hidden';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } else {
+                        alert(data.message || 'Error exporting quizzes');
+                    }
+                })
+                .catch(error => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    console.error('Error:', error);
+                    alert('Error exporting quizzes. Please try again.');
+                });
             });
         }
     </script>

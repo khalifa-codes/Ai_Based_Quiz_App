@@ -25,18 +25,35 @@ try {
         throw new Exception('Database connection could not be established');
     }
     
-    // Fetch unread notifications count
-    $countStmt = $conn->prepare("SELECT COUNT(*) as unread_count FROM notifications WHERE teacher_id = ? AND (is_read = 0 OR is_read IS NULL)");
+    // For teachers, count unique notifications they sent (grouped to avoid duplicates)
+    // Since teachers send notifications, badge count shows unique notifications sent
+    $countStmt = $conn->prepare("
+        SELECT COUNT(*) as unread_count 
+        FROM (
+            SELECT DISTINCT title, message, type, DATE(created_at) as date_sent
+            FROM notifications 
+            WHERE teacher_id = ? AND (is_read = 0 OR is_read IS NULL)
+        ) as unique_notifs
+    ");
     $countStmt->execute([$teacherId]);
     $countResult = $countStmt->fetch(PDO::FETCH_ASSOC);
     $unreadCount = (int)($countResult['unread_count'] ?? 0);
     
-    // Fetch recent notifications (last 5)
+    // Fetch recent unique notifications (last 5) - notifications sent by this teacher
+    // Group by title, message, type, and date to show unique notifications
     $notifStmt = $conn->prepare("
-        SELECT id, title, message, type, is_read, created_at 
+        SELECT 
+            MIN(id) as id,
+            title, 
+            message, 
+            type, 
+            MIN(is_read) as is_read,
+            MAX(created_at) as created_at,
+            COUNT(*) as recipient_count
         FROM notifications 
         WHERE teacher_id = ? 
-        ORDER BY created_at DESC 
+        GROUP BY title, message, type, DATE(created_at)
+        ORDER BY MAX(created_at) DESC 
         LIMIT 5
     ");
     $notifStmt->execute([$teacherId]);
@@ -45,10 +62,16 @@ try {
     // Format notifications
     $formattedNotifications = [];
     foreach ($notifications as $note) {
+        $recipientCount = (int)($note['recipient_count'] ?? 1);
+        $message = $note['message'] ?? '';
+        if ($recipientCount > 1) {
+            $message .= " (Sent to {$recipientCount} students)";
+        }
+        
         $formattedNotifications[] = [
             'id' => (int)$note['id'],
             'title' => $note['title'] ?? 'Notification',
-            'message' => $note['message'] ?? '',
+            'message' => $message,
             'type' => $note['type'] ?? 'info',
             'is_read' => (int)($note['is_read'] ?? 0) === 1,
             'created_at' => $note['created_at'] ?? '',

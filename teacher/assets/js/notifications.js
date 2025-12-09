@@ -6,8 +6,17 @@
 (function() {
     'use strict';
     
-    const NOTIFICATION_API = '../api/teacher/get_notifications.php';
-    const MARK_READ_API = '../api/teacher/mark_notification_read.php';
+    // Determine correct API path based on current page location
+    const currentPath = window.location.pathname;
+    let apiBasePath = '../api/teacher/';
+    
+    // If we're in notifications subdirectory, go up two levels
+    if (currentPath.includes('/notifications/')) {
+        apiBasePath = '../../api/teacher/';
+    }
+    
+    const NOTIFICATION_API = apiBasePath + 'get_notifications.php';
+    const MARK_READ_API = apiBasePath + 'mark_notification_read.php';
     const UPDATE_INTERVAL = 30000; // 30 seconds
     
     let updateInterval = null;
@@ -53,17 +62,31 @@
      */
     function loadNotifications() {
         fetch(NOTIFICATION_API)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
-                    updateNotificationBadge(data.unread_count);
-                    updateNotificationList(data.notifications);
+                    const unreadCount = parseInt(data.unread_count || 0);
+                    updateNotificationBadge(unreadCount);
+                    updateNotificationList(data.notifications || []);
+                } else {
+                    // If API fails, hide badge
+                    updateNotificationBadge(0);
                 }
             })
             .catch(error => {
                 console.error('Error loading notifications:', error);
+                // On error, hide badge
+                updateNotificationBadge(0);
             });
     }
+    
+    // Expose loadNotifications globally so it can be called from other scripts
+    window.loadNotifications = loadNotifications;
     
     /**
      * Update notification badge count
@@ -72,24 +95,29 @@
         const notificationBadge = document.getElementById('notificationBadge');
         const notificationBtn = document.getElementById('notificationBtn');
         
+        if (!notificationBtn) return;
+        
         if (count > 0) {
             if (!notificationBadge) {
                 // Create badge if it doesn't exist
                 const badge = document.createElement('span');
                 badge.id = 'notificationBadge';
                 badge.className = 'notification-badge';
-                badge.style.cssText = 'position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);';
-                badge.textContent = count > 99 ? '99+' : count;
-                if (notificationBtn) {
-                    notificationBtn.appendChild(badge);
-                }
+                badge.style.cssText = 'position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex !important; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff); z-index: 10;';
+                badge.textContent = count > 99 ? '99+' : count.toString();
+                notificationBtn.appendChild(badge);
             } else {
-                notificationBadge.textContent = count > 99 ? '99+' : count;
+                // Update existing badge
+                notificationBadge.textContent = count > 99 ? '99+' : count.toString();
                 notificationBadge.style.display = 'flex';
+                notificationBadge.style.visibility = 'visible';
+                notificationBadge.style.opacity = '1';
             }
         } else {
+            // Hide badge when count is 0
             if (notificationBadge) {
                 notificationBadge.style.display = 'none';
+                notificationBadge.style.visibility = 'hidden';
             }
         }
     }

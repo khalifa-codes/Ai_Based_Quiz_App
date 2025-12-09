@@ -398,14 +398,102 @@ try {
             });
         }
         
-        // Remove Student Button
+        // Remove Student Button - Permanent Functionality
         const removeBtns = document.querySelectorAll('.remove-student-btn');
         removeBtns.forEach(btn => {
             btn.addEventListener('click', function() {
                 const studentName = this.getAttribute('data-student-name');
-                const studentId = this.getAttribute('data-student-id');
+                const studentId = parseInt(this.getAttribute('data-student-id'));
+                
                 if (confirm('Are you sure you want to remove "' + studentName + '" from this department?')) {
-                    window.location.href = 'remove_student.php?student_id=' + studentId + '&dept_id=<?php echo urlencode($deptId); ?>';
+                    // Disable button during removal
+                    this.disabled = true;
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Removing...';
+                    
+                    fetch('../../api/teacher/remove_student_from_dept.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            student_id: studentId,
+                            dept_id: '<?php echo $deptId; ?>'
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const row = this.closest('tr');
+                            if (row) {
+                                row.style.transition = 'opacity 0.3s ease';
+                                row.style.opacity = '0';
+                                setTimeout(() => {
+                                    row.remove();
+                                }, 300);
+                            }
+                        } else {
+                            this.disabled = false;
+                            this.innerHTML = originalText;
+                            alert(data.message || 'Error removing student');
+                        }
+                    })
+                    .catch(error => {
+                        this.disabled = false;
+                        this.innerHTML = originalText;
+                        console.error('Error:', error);
+                        alert('Error removing student. Please try again.');
+                    });
+                }
+            });
+        });
+        
+        // Assign Quiz Button - Permanent Functionality
+        document.querySelectorAll('.btn-primary[href*="assign"]').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const href = this.getAttribute('href');
+                const match = href.match(/assign=(\d+).*dept_id=([^&]+)/);
+                if (match) {
+                    const quizId = parseInt(match[1]);
+                    const deptId = decodeURIComponent(match[2]);
+                    
+                    const originalText = this.innerHTML;
+                    this.disabled = true;
+                    this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Assigning...';
+                    
+                    fetch('../../api/teacher/assign_quiz.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            quiz_id: quizId,
+                            dept_id: deptId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        this.disabled = false;
+                        this.innerHTML = originalText;
+                        
+                        if (data.success) {
+                            alert('Quiz assigned successfully!');
+                            // Update button to show assigned state
+                            this.classList.remove('btn-primary');
+                            this.classList.add('btn-success');
+                            this.innerHTML = '<i class="bi bi-check-circle"></i> Assigned';
+                            this.onclick = null; // Remove click handler
+                        } else {
+                            alert(data.message || 'Error assigning quiz');
+                        }
+                    })
+                    .catch(error => {
+                        this.disabled = false;
+                        this.innerHTML = originalText;
+                        console.error('Error:', error);
+                        alert('Error assigning quiz. Please try again.');
+                    });
                 }
             });
         });

@@ -508,6 +508,49 @@ try {
             });
         });
         
+        // Export Departments - Permanent Functionality
+        const exportClassesBtn = document.getElementById('exportClassesBtn');
+        if (exportClassesBtn) {
+            exportClassesBtn.addEventListener('click', function() {
+                const originalText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Exporting...';
+                
+                fetch('api/export_departments.php', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    
+                    if (data.success) {
+                        const csvContent = atob(data.data);
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        const url = URL.createObjectURL(blob);
+                        link.setAttribute('href', url);
+                        link.setAttribute('download', data.filename);
+                        link.style.visibility = 'hidden';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } else {
+                        alert(data.message || 'Error exporting departments');
+                    }
+                })
+                .catch(error => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    console.error('Error:', error);
+                    alert('Error exporting departments. Please try again.');
+                });
+            });
+        }
+        
         // Remove loading class after page load
         window.addEventListener('load', function() {
             document.body.classList.remove('loading');

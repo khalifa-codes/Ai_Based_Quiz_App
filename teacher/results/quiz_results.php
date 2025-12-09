@@ -489,11 +489,78 @@ try {
         if (quizFilter) {
             quizFilter.addEventListener('change', filterResults);
         }
-        // Export PDF
+        // Export PDF - Permanent Functionality
         const exportPdfBtn = document.getElementById('exportPdfBtn');
         if (exportPdfBtn) {
             exportPdfBtn.addEventListener('click', function() {
                 window.location.href = 'export_pdf.php?all=1';
+            });
+        }
+        
+        // Export Excel - Permanent Functionality
+        const exportExcelBtn = document.getElementById('exportExcelBtn');
+        if (exportExcelBtn) {
+            exportExcelBtn.addEventListener('click', function() {
+                const originalText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Exporting...';
+                
+                fetch('../../api/teacher/export_results.php?format=excel', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    
+                    if (data.success) {
+                        const csvContent = atob(data.data);
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        const url = URL.createObjectURL(blob);
+                        link.setAttribute('href', url);
+                        link.setAttribute('download', data.filename);
+                        link.style.visibility = 'hidden';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } else {
+                        alert(data.message || 'Error exporting results');
+                    }
+                })
+                .catch(error => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    console.error('Error:', error);
+                    alert('Error exporting results. Please try again.');
+                });
+            });
+        }
+        
+        // Clear Filters - Permanent Functionality
+        const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+        if (clearFiltersBtn) {
+            clearFiltersBtn.addEventListener('click', function() {
+                const resultSearch = document.getElementById('resultSearch');
+                const statusFilter = document.getElementById('statusFilter');
+                const subjectFilter = document.getElementById('subjectFilter');
+                const quizFilter = document.getElementById('quizFilter');
+                
+                if (resultSearch) resultSearch.value = '';
+                if (statusFilter) statusFilter.value = 'all';
+                if (subjectFilter) subjectFilter.value = 'all';
+                if (quizFilter) quizFilter.value = 'all';
+                
+                // Show all rows
+                const rows = document.querySelectorAll('#resultTableBody tr');
+                rows.forEach(row => {
+                    if (!row.querySelector('td[colspan]')) {
+                        row.style.display = '';
+                    }
+                });
             });
         }
     </script>

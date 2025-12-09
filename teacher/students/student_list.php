@@ -1,4 +1,50 @@
-<?php require_once '../auth_check.php'; ?>
+<?php 
+require_once '../auth_check.php';
+require_once __DIR__ . '/../../config/database.php';
+
+$teacherId = (int)($_SESSION['user_id'] ?? 0);
+$students = [];
+$totalStudents = 0;
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    
+    // Fetch all students who have taken quizzes created by this teacher
+    $stmt = $conn->prepare("
+        SELECT DISTINCT
+            s.id,
+            s.name,
+            s.email,
+            s.student_id,
+            s.organization_id,
+            o.name as organization_name,
+            COUNT(DISTINCT qs.id) as quiz_count,
+            s.created_at
+        FROM students s
+        INNER JOIN quiz_submissions qs ON qs.student_id = s.id
+        INNER JOIN quizzes q ON q.id = qs.quiz_id
+        LEFT JOIN organizations o ON o.id = s.organization_id
+        WHERE q.created_by = ?
+        GROUP BY s.id, s.name, s.email, s.student_id, s.organization_id, o.name, s.created_at
+        ORDER BY s.name ASC
+    ");
+    $stmt->execute([$teacherId]);
+    $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $totalStudents = count($students);
+    
+} catch (Exception $e) {
+    error_log('Student List Error: ' . $e->getMessage());
+    $students = [];
+    $totalStudents = 0;
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -182,7 +228,7 @@
                 <div class="content-card">
                     <div class="content-card-header">
                         <h2 class="content-card-title">All Students</h2>
-                        <span class="badge badge-primary" id="studentCount" style="font-size: 1.5rem; padding: 0.6rem 1.2rem; font-weight: 700;">156 Students</span>
+                        <span class="badge badge-primary" id="studentCount" style="font-size: 1.5rem; padding: 0.6rem 1.2rem; font-weight: 700;"><?php echo $totalStudents; ?> Student<?php echo $totalStudents !== 1 ? 's' : ''; ?></span>
                     </div>
                     <div class="content-card-body">
                         <div class="table-responsive">
@@ -199,75 +245,42 @@
                                     </tr>
                                 </thead>
                                 <tbody id="studentTableBody">
+                                    <?php if (empty($students)): ?>
                                     <tr>
-                                        <td><strong>1</strong></td>
+                                        <td colspan="7" class="text-center py-4">
+                                            <p class="text-muted mb-0">No students found.</p>
+                                        </td>
+                                    </tr>
+                                    <?php else: ?>
+                                    <?php foreach ($students as $index => $student): 
+                                        $initials = strtoupper(substr($student['name'], 0, 2));
+                                        $orgName = $student['organization_name'] ?? 'General';
+                                    ?>
+                                    <tr>
+                                        <td><strong><?php echo $index + 1; ?></strong></td>
                                         <td>
                                             <div class="d-flex align-items-center gap-2">
-                                                <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">AS</div>
+                                                <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;"><?php echo $initials; ?></div>
                                                 <div>
-                                                    <h6 style="margin: 0; color: var(--text-primary);">Alice Smith</h6>
-                                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">#STU001</p>
+                                                    <h6 style="margin: 0; color: var(--text-primary);"><?php echo htmlspecialchars($student['name']); ?></h6>
+                                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">#<?php echo htmlspecialchars($student['student_id'] ?? 'N/A'); ?></p>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td>alice.smith@example.com</td>
-                                        <td>CS Dept - Section A</td>
+                                        <td><?php echo htmlspecialchars($student['email']); ?></td>
+                                        <td><?php echo htmlspecialchars($orgName); ?></td>
                                         <td><span class="badge badge-success">Active</span></td>
-                                        <td><strong>12</strong></td>
+                                        <td><strong><?php echo (int)($student['quiz_count'] ?? 0); ?></strong></td>
                                         <td>
                                             <div class="action-buttons">
-                                                <button class="action-btn view" title="View" data-id="1"><i class="bi bi-eye"></i></button>
-                                                <button class="action-btn edit" title="Edit" data-id="1"><i class="bi bi-pencil"></i></button>
-                                                <button class="action-btn delete" title="Delete" data-id="1"><i class="bi bi-trash"></i></button>
+                                                <button class="action-btn view" title="View" data-id="<?php echo $student['id']; ?>"><i class="bi bi-eye"></i></button>
+                                                <button class="action-btn edit" title="Edit" data-id="<?php echo $student['id']; ?>"><i class="bi bi-pencil"></i></button>
+                                                <button class="action-btn delete" title="Delete" data-id="<?php echo $student['id']; ?>" data-name="<?php echo htmlspecialchars($student['name']); ?>"><i class="bi bi-trash"></i></button>
                                             </div>
                                         </td>
                                     </tr>
-                                    <tr>
-                                        <td><strong>2</strong></td>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">BJ</div>
-                                                <div>
-                                                    <h6 style="margin: 0; color: var(--text-primary);">Bob Johnson</h6>
-                                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">#STU002</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>bob.johnson@example.com</td>
-                                        <td>CS Dept - Section B</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                        <td><strong>15</strong></td>
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button class="action-btn view" title="View" data-id="2"><i class="bi bi-eye"></i></button>
-                                                <button class="action-btn edit" title="Edit" data-id="2"><i class="bi bi-pencil"></i></button>
-                                                <button class="action-btn delete" title="Delete" data-id="2"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td><strong>3</strong></td>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">CW</div>
-                                                <div>
-                                                    <h6 style="margin: 0; color: var(--text-primary);">Carol Williams</h6>
-                                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">#STU003</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>carol.williams@example.com</td>
-                                        <td>CS Dept - Section C</td>
-                                        <td><span class="badge badge-warning">Inactive</span></td>
-                                        <td><strong>10</strong></td>
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button class="action-btn view" title="View" data-id="3"><i class="bi bi-eye"></i></button>
-                                                <button class="action-btn edit" title="Edit" data-id="3"><i class="bi bi-pencil"></i></button>
-                                                <button class="action-btn delete" title="Delete" data-id="3"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
@@ -349,7 +362,6 @@
         }
     </script>
     <script>
-        // Common sidebar and theme functions would be in common.js
         // Search functionality
         const studentSearch = document.getElementById('studentSearch');
         const studentTableBody = document.getElementById('studentTableBody');
@@ -358,9 +370,165 @@
                 const searchTerm = this.value.toLowerCase();
                 const rows = studentTableBody.getElementsByTagName('tr');
                 Array.from(rows).forEach(row => {
+                    if (row.querySelector('td[colspan]')) return;
                     const text = row.textContent.toLowerCase();
                     row.style.display = text.includes(searchTerm) ? '' : 'none';
                 });
+                updateStudentCount();
+            });
+        }
+        
+        // Status Filter
+        const statusFilter = document.getElementById('statusFilter');
+        if (statusFilter) {
+            statusFilter.addEventListener('change', function() {
+                const filterValue = this.value.toLowerCase();
+                const rows = studentTableBody.getElementsByTagName('tr');
+                Array.from(rows).forEach(row => {
+                    if (row.querySelector('td[colspan]')) return;
+                    if (filterValue === 'all') {
+                        row.style.display = '';
+                    } else {
+                        const badge = row.querySelector('.badge');
+                        const status = badge ? badge.textContent.toLowerCase() : '';
+                        row.style.display = status.includes(filterValue) ? '' : 'none';
+                    }
+                });
+                updateStudentCount();
+            });
+        }
+        
+        // Update Student Count
+        function updateStudentCount() {
+            const visibleRows = Array.from(studentTableBody.getElementsByTagName('tr')).filter(row => 
+                row.style.display !== 'none' && !row.querySelector('td[colspan]')
+            );
+            const studentCount = document.getElementById('studentCount');
+            if (studentCount) {
+                studentCount.textContent = `${visibleRows.length} Student${visibleRows.length !== 1 ? 's' : ''}`;
+            }
+        }
+        
+        // Action Buttons - Permanent Functionality
+        document.querySelectorAll('.action-btn.view').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const studentId = this.getAttribute('data-id');
+                // View student details - can be implemented later
+                alert('View student details feature will be available soon.');
+            });
+        });
+        
+        document.querySelectorAll('.action-btn.edit').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const studentId = this.getAttribute('data-id');
+                // Edit student - can be implemented later
+                alert('Edit student feature will be available soon.');
+            });
+        });
+        
+        document.querySelectorAll('.action-btn.delete').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const studentId = parseInt(this.getAttribute('data-id'));
+                const studentName = this.getAttribute('data-name') || 'this student';
+                
+                if (confirm(`Are you sure you want to remove "${studentName}"? This action cannot be undone.`)) {
+                    // Disable button during deletion
+                    this.disabled = true;
+                    this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                    
+                    fetch('../../api/teacher/remove_student.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            student_id: studentId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const row = this.closest('tr');
+                            if (row) {
+                                row.style.transition = 'opacity 0.3s ease';
+                                row.style.opacity = '0';
+                                setTimeout(() => {
+                                    row.remove();
+                                    updateStudentCount();
+                                }, 300);
+                            }
+                        } else {
+                            this.disabled = false;
+                            this.innerHTML = '<i class="bi bi-trash"></i>';
+                            alert(data.message || 'Error removing student');
+                        }
+                    })
+                    .catch(error => {
+                        this.disabled = false;
+                        this.innerHTML = '<i class="bi bi-trash"></i>';
+                        console.error('Error:', error);
+                        alert('Error removing student. Please try again.');
+                    });
+                }
+            });
+        });
+        
+        // Export Students - Permanent Functionality
+        const exportStudentsBtn = document.getElementById('exportStudentsBtn');
+        if (exportStudentsBtn) {
+            exportStudentsBtn.addEventListener('click', function() {
+                const originalText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Exporting...';
+                
+                fetch('../../api/teacher/export_students.php', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    
+                    if (data.success) {
+                        const csvContent = atob(data.data);
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        const url = URL.createObjectURL(blob);
+                        link.setAttribute('href', url);
+                        link.setAttribute('download', data.filename);
+                        link.style.visibility = 'hidden';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } else {
+                        alert(data.message || 'Error exporting students');
+                    }
+                })
+                .catch(error => {
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                    console.error('Error:', error);
+                    alert('Error exporting students. Please try again.');
+                });
+            });
+        }
+        
+        // Clear Filters - Permanent Functionality
+        const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+        if (clearFiltersBtn) {
+            clearFiltersBtn.addEventListener('click', function() {
+                if (studentSearch) studentSearch.value = '';
+                if (statusFilter) statusFilter.value = 'all';
+                const rows = studentTableBody.getElementsByTagName('tr');
+                Array.from(rows).forEach(row => {
+                    if (!row.querySelector('td[colspan]')) {
+                        row.style.display = '';
+                    }
+                });
+                updateStudentCount();
             });
         }
     </script>
