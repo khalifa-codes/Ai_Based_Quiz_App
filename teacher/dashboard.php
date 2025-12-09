@@ -1,6 +1,160 @@
 <?php 
 require_once 'auth_check.php';
 require_once __DIR__ . '/../includes/branding_loader.php';
+require_once __DIR__ . '/../config/database.php';
+
+$teacherId = (int)($_SESSION['user_id'] ?? 0);
+
+// Initialize stats
+$stats = [
+    'total_students' => 0,
+    'students_this_month' => 0,
+    'active_examinations' => 0,
+    'active_now' => 0,
+    'completed_examinations' => 0,
+    'completed_this_week' => 0,
+    'average_score' => 0,
+    'score_change' => 0
+];
+
+$recentActivity = [];
+$chartData = [
+    'performance' => [],
+    'success_rate' => []
+];
+
+$notifications = [];
+$notificationCount = 0;
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    
+    // Get total students count
+    $stmt = $conn->prepare("
+        SELECT COUNT(DISTINCT s.id) as total,
+               COUNT(DISTINCT CASE WHEN s.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN s.id END) as this_month
+        FROM students s
+        INNER JOIN quizzes q ON q.created_by = ?
+        WHERE EXISTS (
+            SELECT 1 FROM quiz_submissions qs 
+            WHERE qs.student_id = s.id AND qs.quiz_id = q.id
+        )
+    ");
+    $stmt->execute([$teacherId]);
+    $studentData = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['total_students'] = (int)($studentData['total'] ?? 0);
+    $stats['students_this_month'] = (int)($studentData['this_month'] ?? 0);
+    
+    // Get active examinations (published quizzes)
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total,
+               COUNT(CASE WHEN q.status = 'published' AND (q.end_date IS NULL OR q.end_date >= NOW()) THEN 1 END) as active_now
+        FROM quizzes q
+        WHERE q.created_by = ? AND q.status = 'published'
+    ");
+    $stmt->execute([$teacherId]);
+    $examData = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['active_examinations'] = (int)($examData['total'] ?? 0);
+    $stats['active_now'] = (int)($examData['active_now'] ?? 0);
+    
+    // Get completed examinations (quizzes with submissions)
+    $stmt = $conn->prepare("
+        SELECT COUNT(DISTINCT q.id) as total,
+               COUNT(DISTINCT CASE WHEN qs.submitted_at >= DATE_SUB(NOW(), INTERVAL 1 WEEK) THEN q.id END) as this_week
+        FROM quizzes q
+        INNER JOIN quiz_submissions qs ON qs.quiz_id = q.id
+        WHERE q.created_by = ? AND qs.status IN ('submitted', 'auto_submitted')
+    ");
+    $stmt->execute([$teacherId]);
+    $completedData = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['completed_examinations'] = (int)($completedData['total'] ?? 0);
+    $stats['completed_this_week'] = (int)($completedData['this_week'] ?? 0);
+    
+    // Get average score
+    $stmt = $conn->prepare("
+        SELECT 
+            AVG(qs.percentage) as avg_score,
+            AVG(CASE WHEN qs.submitted_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN qs.percentage END) as current_avg,
+            AVG(CASE WHEN qs.submitted_at < DATE_SUB(NOW(), INTERVAL 1 MONTH) AND qs.submitted_at >= DATE_SUB(NOW(), INTERVAL 2 MONTH) THEN qs.percentage END) as previous_avg
+        FROM quiz_submissions qs
+        INNER JOIN quizzes q ON q.id = qs.quiz_id
+        WHERE q.created_by = ? AND qs.status IN ('submitted', 'auto_submitted') AND qs.percentage IS NOT NULL
+    ");
+    $stmt->execute([$teacherId]);
+    $scoreData = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stats['average_score'] = round((float)($scoreData['avg_score'] ?? 0), 1);
+    $currentAvg = (float)($scoreData['current_avg'] ?? 0);
+    $previousAvg = (float)($scoreData['previous_avg'] ?? 0);
+    if ($previousAvg > 0) {
+        $stats['score_change'] = round($currentAvg - $previousAvg, 1);
+    }
+    
+    // Get recent activity (last 10 submissions and quiz creations)
+    $stmt = $conn->prepare("
+        SELECT 
+            'Examination completed' as activity,
+            s.name as student_name,
+            q.title as quiz_title,
+            qs.submitted_at as activity_time,
+            'examination' as type,
+            'completed' as status
+        FROM quiz_submissions qs
+        INNER JOIN quizzes q ON q.id = qs.quiz_id
+        INNER JOIN students s ON s.id = qs.student_id
+        WHERE q.created_by = ? AND qs.status IN ('submitted', 'auto_submitted')
+        ORDER BY qs.submitted_at DESC
+        LIMIT 10
+    ");
+    $stmt->execute([$teacherId]);
+    $recentActivity = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Get chart data - Performance over last 6 months
+    $stmt = $conn->prepare("
+        SELECT 
+            DATE_FORMAT(qs.submitted_at, '%Y-%m') as month,
+            AVG(qs.percentage) as avg_score
+        FROM quiz_submissions qs
+        INNER JOIN quizzes q ON q.id = qs.quiz_id
+        WHERE q.created_by = ? 
+            AND qs.status IN ('submitted', 'auto_submitted')
+            AND qs.submitted_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(qs.submitted_at, '%Y-%m')
+        ORDER BY month ASC
+    ");
+    $stmt->execute([$teacherId]);
+    $chartData['performance'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Get success rate data
+    $stmt = $conn->prepare("
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN qs.percentage >= 50 THEN 1 ELSE 0 END) as passed
+        FROM quiz_submissions qs
+        INNER JOIN quizzes q ON q.id = qs.quiz_id
+        WHERE q.created_by = ? AND qs.status IN ('submitted', 'auto_submitted')
+    ");
+    $stmt->execute([$teacherId]);
+    $successData = $stmt->fetch(PDO::FETCH_ASSOC);
+    $chartData['success_rate'] = [
+        'total' => (int)($successData['total'] ?? 0),
+        'passed' => (int)($successData['passed'] ?? 0),
+        'failed' => (int)($successData['total'] ?? 0) - (int)($successData['passed'] ?? 0)
+    ];
+    
+    // Notifications will be loaded via JavaScript API
+    $notifications = [];
+    $notificationCount = 0;
+    
+} catch (Exception $e) {
+    error_log('Teacher dashboard data fetch error: ' . $e->getMessage());
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -180,7 +334,7 @@ require_once __DIR__ . '/../includes/branding_loader.php';
                         <div class="notification-wrapper" style="position: relative;">
                             <button class="topbar-btn notification-btn" id="notificationBtn" title="Notifications" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 40px !important; height: 40px !important; position: relative !important; flex-shrink: 0 !important; margin: 0 !important;">
                                 <i class="bi bi-bell" style="font-size: 1.3rem !important;"></i>
-                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">3</span>
+                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">0</span>
                             </button>
                             <!-- Notification Dropdown -->
                             <div class="notification-dropdown" id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 10px); right: 0; width: 380px; max-width: calc(100vw - 40px); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden;">
@@ -189,42 +343,8 @@ require_once __DIR__ . '/../includes/branding_loader.php';
                                     <a href="notifications/view_all.php" class="view-all-link" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem; font-weight: 500;">View All</a>
                                 </div>
                                 <div class="notification-dropdown-body" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                    <!-- Notifications will be loaded here -->
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease; background: var(--primary-light, rgba(13, 110, 253, 0.05));">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-megaphone"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">New Examination Schedule</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Data Structures Midterm examination has been scheduled for next week.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">2 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--success-color, #198754); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-check-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Results Published</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Database Systems Assignment results are now available for review.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">5 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--info-color, #0dcaf0); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-info-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">System Update</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">New features have been added to the examination system.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">1 day ago</span>
-                                            </div>
-                                        </div>
+                                    <div class="notification-item" style="padding: 1rem 1.25rem; text-align:center;">
+                                        <p style="margin:0; color: var(--text-secondary);">Loading notifications...</p>
                                     </div>
                                 </div>
                                 <div class="notification-dropdown-footer" style="padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); text-align: center; background: var(--bg-secondary);">
@@ -250,10 +370,14 @@ require_once __DIR__ . '/../includes/branding_loader.php';
                                 <i class="bi bi-mortarboard"></i>
                             </div>
                         </div>
-                        <div class="stat-card-value">156</div>
-                        <div class="stat-card-change positive">
+                        <div class="stat-card-value"><?php echo number_format($stats['total_students']); ?></div>
+                        <div class="stat-card-change <?php echo $stats['students_this_month'] > 0 ? 'positive' : ''; ?>">
+                            <?php if ($stats['students_this_month'] > 0): ?>
                             <i class="bi bi-arrow-up"></i>
-                            <span>12 new this month</span>
+                            <span><?php echo $stats['students_this_month']; ?> new this month</span>
+                            <?php else: ?>
+                            <span>No new students</span>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -264,10 +388,14 @@ require_once __DIR__ . '/../includes/branding_loader.php';
                                 <i class="bi bi-file-earmark-text"></i>
                             </div>
                         </div>
-                        <div class="stat-card-value">24</div>
-                        <div class="stat-card-change positive">
+                        <div class="stat-card-value"><?php echo number_format($stats['active_examinations']); ?></div>
+                        <div class="stat-card-change <?php echo $stats['active_now'] > 0 ? 'positive' : ''; ?>">
+                            <?php if ($stats['active_now'] > 0): ?>
                             <i class="bi bi-arrow-up"></i>
-                            <span>3 active now</span>
+                            <span><?php echo $stats['active_now']; ?> active now</span>
+                            <?php else: ?>
+                            <span>No active exams</span>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -278,10 +406,14 @@ require_once __DIR__ . '/../includes/branding_loader.php';
                                 <i class="bi bi-check-circle"></i>
                             </div>
                         </div>
-                        <div class="stat-card-value">98</div>
-                        <div class="stat-card-change positive">
+                        <div class="stat-card-value"><?php echo number_format($stats['completed_examinations']); ?></div>
+                        <div class="stat-card-change <?php echo $stats['completed_this_week'] > 0 ? 'positive' : ''; ?>">
+                            <?php if ($stats['completed_this_week'] > 0): ?>
                             <i class="bi bi-arrow-up"></i>
-                            <span>8 this week</span>
+                            <span><?php echo $stats['completed_this_week']; ?> this week</span>
+                            <?php else: ?>
+                            <span>No completions this week</span>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -292,10 +424,14 @@ require_once __DIR__ . '/../includes/branding_loader.php';
                                 <i class="bi bi-star"></i>
                             </div>
                         </div>
-                        <div class="stat-card-value">85%</div>
-                        <div class="stat-card-change positive">
-                            <i class="bi bi-arrow-up"></i>
-                            <span>2% increase</span>
+                        <div class="stat-card-value"><?php echo number_format($stats['average_score'], 1); ?>%</div>
+                        <div class="stat-card-change <?php echo $stats['score_change'] >= 0 ? 'positive' : 'negative'; ?>">
+                            <?php if ($stats['score_change'] != 0): ?>
+                            <i class="bi bi-arrow-<?php echo $stats['score_change'] >= 0 ? 'up' : 'down'; ?>"></i>
+                            <span><?php echo abs($stats['score_change']); ?>% <?php echo $stats['score_change'] >= 0 ? 'increase' : 'decrease'; ?></span>
+                            <?php else: ?>
+                            <span>No change</span>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -342,27 +478,23 @@ require_once __DIR__ . '/../includes/branding_loader.php';
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr>
-                                        <td>Examination completed</td>
-                                        <td>John Doe</td>
-                                        <td><span class="badge badge-info">Examination</span></td>
-                                        <td>2 hours ago</td>
-                                        <td><span class="badge badge-success">Completed</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td>New examination created</td>
-                                        <td>You</td>
-                                        <td><span class="badge badge-info">Examination</span></td>
-                                        <td>5 hours ago</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td>Student enrolled</td>
-                                        <td>Alice Smith</td>
-                                        <td><span class="badge badge-primary">Student</span></td>
-                                        <td>1 day ago</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                    </tr>
+                                    <?php if (empty($recentActivity)): ?>
+                                        <tr>
+                                            <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                                No recent activity
+                                            </td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($recentActivity as $activity): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($activity['activity']); ?></td>
+                                                <td><?php echo htmlspecialchars($activity['student_name'] ?? 'N/A'); ?></td>
+                                                <td><span class="badge badge-info"><?php echo htmlspecialchars(ucfirst($activity['type'] ?? 'Examination')); ?></span></td>
+                                                <td><?php echo !empty($activity['activity_time']) ? date('M d, Y H:i', strtotime($activity['activity_time'])) : 'N/A'; ?></td>
+                                                <td><span class="badge badge-success"><?php echo htmlspecialchars(ucfirst($activity['status'] ?? 'Completed')); ?></span></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
@@ -513,13 +645,26 @@ require_once __DIR__ . '/../includes/branding_loader.php';
         // Student Performance Chart
         const studentPerfCtx = document.getElementById('studentPerformanceChart');
         if (studentPerfCtx) {
+            const performanceData = <?php echo json_encode($chartData['performance']); ?>;
+            const perfLabels = performanceData.map(item => {
+                const date = new Date(item.month + '-01');
+                return date.toLocaleDateString('en-US', { month: 'short' });
+            });
+            const perfScores = performanceData.map(item => parseFloat(item.avg_score || 0));
+            
+            // If no data, show empty chart
+            if (perfLabels.length === 0) {
+                perfLabels.push('No Data');
+                perfScores.push(0);
+            }
+            
             new Chart(studentPerfCtx, {
                 type: 'line',
                 data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                    labels: perfLabels,
                     datasets: [{
                         label: 'Average Score',
-                        data: [78, 82, 80, 85, 88, 85],
+                        data: perfScores,
                         borderColor: chartColors.primary,
                         backgroundColor: chartColors.primary + '20',
                         borderWidth: 3,
@@ -550,12 +695,17 @@ require_once __DIR__ . '/../includes/branding_loader.php';
         // Examination Success Rate Chart
         const quizSuccessCtx = document.getElementById('quizSuccessRateChart');
         if (quizSuccessCtx) {
+            const successData = <?php echo json_encode($chartData['success_rate']); ?>;
+            const total = successData.total || 0;
+            const passed = successData.passed || 0;
+            const failed = successData.failed || 0;
+            
             new Chart(quizSuccessCtx, {
                 type: 'doughnut',
                 data: {
                     labels: ['Passed', 'Failed'],
                     datasets: [{
-                        data: [85, 15],
+                        data: total > 0 ? [passed, failed] : [0, 0],
                         backgroundColor: [chartColors.success, chartColors.danger],
                         borderWidth: 0
                     }]

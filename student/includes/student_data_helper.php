@@ -233,53 +233,8 @@ function fetchSubmissionAnswerStats(PDO $conn, array $submissionIds): array
  */
 function buildStudentNotifications(array $recentSubmissions, array $upcomingQuizzes): array
 {
-    $notifications = [];
-
-    foreach ($recentSubmissions as $submission) {
-        if (!in_array($submission['status'], ['submitted', 'auto_submitted'], true)) {
-            continue;
-        }
-        if (empty($submission['submitted_at'])) {
-            continue;
-        }
-        $scoreText = $submission['score_percent'] !== null
-            ? number_format($submission['score_percent'], 2) . '%'
-            : 'completed';
-
-        $notifications[] = [
-            'type' => 'result',
-            'title' => 'Result Published',
-            'description' => sprintf(
-                '%s – your score is %s.',
-                $submission['title'],
-                $scoreText
-            ),
-            'timestamp' => $submission['submitted_at'],
-            'url' => sprintf('results/result_detail.php?id=%d', $submission['submission_id']),
-        ];
-    }
-
-    foreach ($upcomingQuizzes as $quiz) {
-        $notifications[] = [
-            'type' => 'exam',
-            'title' => 'New Examination Available',
-            'description' => sprintf(
-                '%s (%s) is ready to attempt.',
-                $quiz['title'],
-                $quiz['subject'] ?: 'General'
-            ),
-            'timestamp' => $quiz['created_at'],
-            'url' => sprintf('quizzes/quiz_instructions.php?id=%d', $quiz['id']),
-        ];
-    }
-
-    usort($notifications, function ($a, $b) {
-        $timeA = !empty($a['timestamp']) ? strtotime($a['timestamp']) : 0;
-        $timeB = !empty($b['timestamp']) ? strtotime($b['timestamp']) : 0;
-        return $timeB <=> $timeA;
-    });
-
-    return $notifications;
+    // Return empty array - notifications will be managed separately
+    return [];
 }
 
 /**

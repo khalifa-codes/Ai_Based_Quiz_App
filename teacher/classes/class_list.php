@@ -1,4 +1,75 @@
-<?php require_once '../auth_check.php'; ?>
+<?php 
+require_once '../auth_check.php';
+require_once __DIR__ . '/../../config/database.php';
+
+$teacherId = (int)($_SESSION['user_id'] ?? 0);
+$notifications = [];
+$notificationCount = 0;
+$departments = [];
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    
+    // Fetch all organizations (departments) that teacher has access to
+    $stmt = $conn->prepare("
+        SELECT 
+            o.id as organization_id,
+            o.name as department_name,
+            o.created_at,
+            COUNT(DISTINCT s.id) as student_count,
+            COUNT(DISTINCT q.id) as quiz_count,
+            GROUP_CONCAT(DISTINCT q.subject SEPARATOR ', ') as subjects
+        FROM organizations o
+        LEFT JOIN students s ON s.organization_id = o.id
+        LEFT JOIN quizzes q ON q.created_by = ? AND (q.organization_id = o.id OR q.organization_id IS NULL)
+        WHERE o.status = 'active'
+        GROUP BY o.id, o.name, o.created_at
+        ORDER BY o.name ASC
+    ");
+    $stmt->execute([$teacherId]);
+    $departments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // If no departments found, check for general departments from quizzes
+    if (empty($departments)) {
+        $stmt = $conn->prepare("
+            SELECT DISTINCT
+                COALESCE(q.subject, 'General') as department_name,
+                NULL as organization_id,
+                NULL as created_at,
+                COUNT(DISTINCT s.id) as student_count,
+                COUNT(DISTINCT q.id) as quiz_count,
+                GROUP_CONCAT(DISTINCT q.subject SEPARATOR ', ') as subjects
+            FROM quizzes q
+            LEFT JOIN quiz_submissions qs ON qs.quiz_id = q.id
+            LEFT JOIN students s ON s.id = qs.student_id
+            WHERE q.created_by = ?
+            GROUP BY q.subject
+            ORDER BY department_name ASC
+        ");
+        $stmt->execute([$teacherId]);
+        $departments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    // Fetch notifications for teacher
+    $notifStmt = $conn->prepare("SELECT * FROM notifications WHERE teacher_id = ? ORDER BY created_at DESC LIMIT 5");
+    $notifStmt->execute([$teacherId]);
+    $notifications = $notifStmt->fetchAll(PDO::FETCH_ASSOC);
+    $notificationCount = count($notifications);
+} catch (Exception $e) {
+    error_log('Teacher class list data fetch error: ' . $e->getMessage());
+    $notifications = [];
+    $notificationCount = 0;
+    $departments = [];
+    $conn = null;
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -42,68 +113,9 @@
         @media (max-width: 768px) {
             .notification-dropdown { width: calc(100vw - 20px); right: -10px; }
         }
-        .class-card {
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1.5rem;
-            transition: all 0.3s ease;
-            background: var(--bg-primary);
-            height: 100%;
-        }
-        .class-card:hover {
-            border-color: var(--primary-color);
-            transform: translateY(-5px);
-            box-shadow: var(--shadow-md);
-        }
-        .class-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            background: var(--primary-light);
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-        }
-        .class-stats {
-            display: flex;
-            gap: 1.5rem;
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid var(--border-color);
-        }
-        .class-stat-item {
-            text-align: center;
-        }
-        .class-stat-value {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--primary-color);
-        }
-        .class-stat-label {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-        }
-        .class-card h4 {
-            margin-bottom: 0.5rem;
-            color: var(--text-primary);
-            font-weight: 600;
-        }
-        .class-card p.text-muted {
-            color: var(--text-primary) !important;
-            font-size: 1rem;
-            font-weight: 500;
-            opacity: 0.8;
-            margin-bottom: 1rem;
-        }
-        [data-theme="dark"] .class-card p.text-muted {
-            opacity: 0.9;
-        }
     </style>
 </head>
-<body>
+<body class="loading">
     <div class="admin-wrapper">
         <aside class="admin-sidebar" id="teacherSidebar">
             <div class="sidebar-header">
@@ -151,6 +163,7 @@
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
         <main class="admin-main">
             <button class="floating-hamburger" id="floatingHamburger"><i class="bi bi-list"></i></button>
+            <!-- Topbar -->
             <div class="admin-topbar">
                 <div class="topbar-left">
                     <div>
@@ -163,13 +176,14 @@
                         </nav>
                     </div>
                 </div>
+                
                 <div class="topbar-right">
                     <div class="topbar-actions" style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 0.75rem !important; flex-wrap: nowrap !important;">
                         <!-- Notification Bell -->
                         <div class="notification-wrapper" style="position: relative;">
                             <button class="topbar-btn notification-btn" id="notificationBtn" title="Notifications" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 40px !important; height: 40px !important; position: relative !important; flex-shrink: 0 !important; margin: 0 !important;">
                                 <i class="bi bi-bell" style="font-size: 1.3rem !important;"></i>
-                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">3</span>
+                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">0</span>
                             </button>
                             <!-- Notification Dropdown -->
                             <div class="notification-dropdown" id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 10px); right: 0; width: 380px; max-width: calc(100vw - 40px); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden;">
@@ -178,41 +192,8 @@
                                     <a href="../notifications/view_all.php" class="view-all-link" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem; font-weight: 500;">View All</a>
                                 </div>
                                 <div class="notification-dropdown-body" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease; background: var(--primary-light, rgba(13, 110, 253, 0.05));">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-megaphone"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">New Examination Schedule</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Data Structures Midterm examination has been scheduled for next week.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">2 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--success-color, #198754); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-check-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Results Published</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Database Systems Assignment results are now available for review.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">5 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--info-color, #0dcaf0); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-info-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">System Update</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">New features have been added to the examination system.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">1 day ago</span>
-                                            </div>
-                                        </div>
+                                    <div class="notification-item" style="padding: 1rem 1.25rem; text-align:center;">
+                                        <p style="margin:0; color: var(--text-secondary);">Loading notifications...</p>
                                     </div>
                                 </div>
                                 <div class="notification-dropdown-footer" style="padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); text-align: center; background: var(--bg-secondary);">
@@ -251,106 +232,149 @@
                         </div>
                     </div>
                 </div>
-                <div class="row g-4" id="classesGrid">
-                    <div class="col-md-4">
-                        <div class="class-card">
-                            <div class="class-icon">
-                                <i class="bi bi-journal-bookmark"></i>
-                            </div>
-                            <h4>CS Department - Section A</h4>
-                            <p class="text-muted mb-0">Data Structures & Algorithms</p>
-                            <div class="class-stats">
-                                <div class="class-stat-item">
-                                    <div class="class-stat-value">45</div>
-                                    <div class="class-stat-label">Students</div>
-                                </div>
-                                <div class="class-stat-item">
-                                    <div class="class-stat-value">12</div>
-                                    <div class="class-stat-label">Examinations</div>
-                                </div>
-                            </div>
-                            <div class="d-flex gap-2 mt-3">
-                                <button class="btn btn-sm btn-primary flex-fill">View Details</button>
-                                <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></button>
-                            </div>
-                        </div>
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <h2 class="content-card-title">All Departments & Sections</h2>
+                        <span class="badge badge-primary" id="deptCount" style="font-size: 1.5rem; padding: 0.6rem 1.2rem; font-weight: 700;"><?php echo count($departments); ?> Department<?php echo count($departments) !== 1 ? 's' : ''; ?></span>
                     </div>
-                    <div class="col-md-4">
-                        <div class="class-card">
-                            <div class="class-icon">
-                                <i class="bi bi-journal-bookmark"></i>
-                            </div>
-                            <h4>CS Department - Section B</h4>
-                            <p class="text-muted mb-0">Database Systems</p>
-                            <div class="class-stats">
-                                <div class="class-stat-item">
-                                    <div class="class-stat-value">38</div>
-                                    <div class="class-stat-label">Students</div>
-                                </div>
-                                <div class="class-stat-item">
-                                    <div class="class-stat-value">10</div>
-                                    <div class="class-stat-label">Examinations</div>
-                                </div>
-                            </div>
-                            <div class="d-flex gap-2 mt-3">
-                                <button class="btn btn-sm btn-primary flex-fill">View Details</button>
-                                <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="class-card">
-                            <div class="class-icon">
-                                <i class="bi bi-journal-bookmark"></i>
-                            </div>
-                            <h4>CS Department - Section C</h4>
-                            <p class="text-muted mb-0">Computer Networks</p>
-                            <div class="class-stats">
-                                <div class="class-stat-item">
-                                    <div class="class-stat-value">42</div>
-                                    <div class="class-stat-label">Students</div>
-                                </div>
-                                <div class="class-stat-item">
-                                    <div class="class-stat-value">14</div>
-                                    <div class="class-stat-label">Examinations</div>
-                                </div>
-                            </div>
-                            <div class="d-flex gap-2 mt-3">
-                                <button class="btn btn-sm btn-primary flex-fill">View Details</button>
-                                <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></button>
-                            </div>
+                    <div class="content-card-body">
+                        <div class="table-responsive">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>No.</th>
+                                        <th>Department Name</th>
+                                        <th>Subjects</th>
+                                        <th>Students</th>
+                                        <th>Examinations</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deptTableBody">
+                                    <?php if (empty($departments)): ?>
+                                        <tr>
+                                            <td colspan="7" class="text-center py-4">
+                                                <i class="bi bi-journal-bookmark" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem; display: block;"></i>
+                                                <p class="text-muted mb-0">No departments found. <button class="btn btn-link p-0" id="addDeptFromEmpty" style="text-decoration: none;">Create your first department</button></p>
+                                            </td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($departments as $index => $dept): ?>
+                                            <tr>
+                                                <td><strong><?php echo $index + 1; ?></strong></td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem; background: rgba(13, 110, 253, 0.1); color: var(--primary-color);">
+                                                            <i class="bi bi-journal-bookmark"></i>
+                                                        </div>
+                                                        <div>
+                                                            <h6 style="margin: 0; color: var(--text-primary);"><?php echo htmlspecialchars($dept['department_name']); ?></h6>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td><?php echo htmlspecialchars($dept['subjects'] ?? 'No subjects'); ?></td>
+                                                <td><strong><?php echo number_format((int)($dept['student_count'] ?? 0)); ?></strong></td>
+                                                <td><strong><?php echo number_format((int)($dept['quiz_count'] ?? 0)); ?></strong></td>
+                                                <td><?php echo !empty($dept['created_at']) ? date('M d, Y', strtotime($dept['created_at'])) : 'N/A'; ?></td>
+                                                <td>
+                                                    <div class="action-buttons">
+                                                        <a href="section_detail.php?dept_id=<?php echo htmlspecialchars($dept['organization_id'] ?? 'general'); ?>&dept_name=<?php echo urlencode($dept['department_name']); ?>" class="action-btn view" title="View Details">
+                                                            <i class="bi bi-eye"></i>
+                                                        </a>
+                                                        <button class="action-btn delete-dept-btn" data-dept-id="<?php echo htmlspecialchars($dept['organization_id'] ?? 'general'); ?>" data-dept-name="<?php echo htmlspecialchars($dept['department_name']); ?>" title="Remove Department" style="background: var(--danger-color); color: white;">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
             </div>
         </main>
     </div>
+    
+    <!-- Add Department Modal -->
+    <div class="modal fade" id="addDepartmentModal" tabindex="-1" aria-labelledby="addDepartmentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="background: var(--bg-primary); border: 1px solid var(--border-color);">
+                <div class="modal-header" style="border-bottom: 1px solid var(--border-color);">
+                    <h5 class="modal-title" id="addDepartmentModalLabel" style="color: var(--text-primary);">Add New Department</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter: var(--text-primary);"></button>
+                </div>
+                <form id="addDepartmentForm">
+                    <div class="modal-body" style="padding: 1.5rem;">
+                        <div class="mb-3">
+                            <label for="deptName" class="form-label" style="color: var(--text-primary); font-weight: 500;">Department Name <span style="color: var(--danger-color);">*</span></label>
+                            <input type="text" class="form-control" id="deptName" name="dept_name" required placeholder="e.g., Computer Science" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                            <small class="form-text" style="color: var(--text-secondary);">Enter a unique department name</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="deptCode" class="form-label" style="color: var(--text-primary); font-weight: 500;">Department Code</label>
+                            <input type="text" class="form-control" id="deptCode" name="dept_code" placeholder="e.g., CS" style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);">
+                            <small class="form-text" style="color: var(--text-secondary);">Optional: Short code for the department</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="deptDescription" class="form-label" style="color: var(--text-primary); font-weight: 500;">Description</label>
+                            <textarea class="form-control" id="deptDescription" name="dept_description" rows="3" placeholder="Enter department description..." style="background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-primary);"></textarea>
+                        </div>
+                        <input type="hidden" name="teacher_id" value="<?php echo $teacherId; ?>">
+                    </div>
+                    <div class="modal-footer" style="border-top: 1px solid var(--border-color);">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Create Department
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../../assets/js/admin-functions.js"></script>
     <script>
         // Theme Management
         function updateThemeIcon(theme) {
             const icon = document.getElementById('themeIcon');
-            if (icon) icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+            if (icon) {
+                icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+            }
         }
+
         const themeToggle = document.getElementById('themeToggle');
         const savedTheme = localStorage.getItem('theme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
         updateThemeIcon(savedTheme);
+
         if (themeToggle) {
             let isToggling = false;
-            themeToggle.addEventListener('mousedown', e => e.preventDefault());
+            
+            themeToggle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+            });
+            
             themeToggle.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                
                 if (isToggling) return;
                 isToggling = true;
+                
                 const currentTheme = document.documentElement.getAttribute('data-theme');
                 const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
                 document.documentElement.setAttribute('data-theme', newTheme);
                 localStorage.setItem('theme', newTheme);
                 updateThemeIcon(newTheme);
-                setTimeout(() => { isToggling = false; }, 300);
+                
+                setTimeout(() => {
+                    isToggling = false;
+                }, 300);
             });
         }
         // Sidebar Toggle
@@ -387,18 +411,107 @@
             document.addEventListener('click', e => { if (!sidebarUserDropdown.contains(e.target)) sidebarUserDropdown.classList.remove('active'); });
             document.addEventListener('keydown', e => { if (e.key === 'Escape' && sidebarUserDropdown.classList.contains('active')) sidebarUserDropdown.classList.remove('active'); });
         }
-        // Class Search
+        // Department Search
         const classSearch = document.getElementById('classSearch');
         if (classSearch) {
             classSearch.addEventListener('input', function() {
                 const searchTerm = this.value.toLowerCase();
-                const cards = document.querySelectorAll('.class-card');
-                cards.forEach(card => {
-                    const text = card.textContent.toLowerCase();
-                    card.closest('.col-md-4').style.display = text.includes(searchTerm) ? '' : 'none';
+                const rows = document.querySelectorAll('#deptTableBody tr');
+                rows.forEach(row => {
+                    if (row.querySelector('td[colspan]')) return;
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(searchTerm) ? '' : 'none';
                 });
             });
         }
+        
+        // Add Department Modal
+        const addClassBtn = document.getElementById('addClassBtn');
+        const addDeptFromEmpty = document.getElementById('addDeptFromEmpty');
+        const addDeptModal = document.getElementById('addDepartmentModal');
+        const addDeptForm = document.getElementById('addDepartmentForm');
+        
+        function openAddModal() {
+            if (addDeptModal) {
+                const modal = new bootstrap.Modal(addDeptModal);
+                modal.show();
+            }
+        }
+        
+        if (addClassBtn) {
+            addClassBtn.addEventListener('click', openAddModal);
+        }
+        if (addDeptFromEmpty) {
+            addDeptFromEmpty.addEventListener('click', openAddModal);
+        }
+        
+        if (addDeptForm) {
+            addDeptForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const submitBtn = this.querySelector('button[type="submit"]');
+                const originalText = submitBtn.innerHTML;
+                
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
+                
+                fetch('api/add_department.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert(data.message || 'Error creating department');
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalText;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred. Please try again.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                });
+            });
+        }
+        
+        // Delete Department Button
+        const deleteBtns = document.querySelectorAll('.delete-dept-btn');
+        deleteBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const deptName = this.getAttribute('data-dept-name');
+                const deptId = this.getAttribute('data-dept-id');
+                if (confirm('Are you sure you want to remove "' + deptName + '"? This action cannot be undone.')) {
+                    fetch('api/delete_department.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ dept_id: deptId })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.reload();
+                        } else {
+                            alert(data.message || 'Error deleting department');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred. Please try again.');
+                    });
+                }
+            });
+        });
+        
+        // Remove loading class after page load
+        window.addEventListener('load', function() {
+            document.body.classList.remove('loading');
+        });
     </script>
     <script src="../assets/js/activity-tracker.js"></script>
     <script src="../assets/js/notifications.js"></script>

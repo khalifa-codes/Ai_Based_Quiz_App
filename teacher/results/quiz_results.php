@@ -10,8 +10,14 @@ $results = [];
 $totalResults = 0;
 
 try {
-    $db = Database::getInstance();
-    $conn = $db->getConnection();
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
     
     // Get all quiz submissions for quizzes created by this teacher
     $stmt = $conn->prepare("
@@ -113,7 +119,7 @@ try {
                 </ul>
                 <div class="nav-section-title">Management</div>
                 <ul class="list-unstyled">
-                    <li class="nav-item"><a href="../classes/class_list.php" class="nav-link"><i class="bi bi-journal-bookmark"></i><span>Classes</span></a></li>
+                    <li class="nav-item"><a href="../classes/class_list.php" class="nav-link"><i class="bi bi-journal-bookmark"></i><span>Departments & Sections</span></a></li>
                     <li class="nav-item"><a href="../quizzes/quiz_list.php" class="nav-link"><i class="bi bi-file-earmark-text"></i><span>Examinations</span></a></li>
                     <li class="nav-item"><a href="../students/student_list.php" class="nav-link"><i class="bi bi-mortarboard"></i><span>Students</span></a></li>
                     <li class="nav-item"><a href="quiz_results.php" class="nav-link active"><i class="bi bi-clipboard-data"></i><span>Department Results</span></a></li>
@@ -158,7 +164,7 @@ try {
                         <div class="notification-wrapper" style="position: relative;">
                             <button class="topbar-btn notification-btn" id="notificationBtn" title="Notifications" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 40px !important; height: 40px !important; position: relative !important; flex-shrink: 0 !important; margin: 0 !important;">
                                 <i class="bi bi-bell" style="font-size: 1.3rem !important;"></i>
-                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">3</span>
+                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">0</span>
                             </button>
                             <!-- Notification Dropdown -->
                             <div class="notification-dropdown" id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 10px); right: 0; width: 380px; max-width: calc(100vw - 40px); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden;">
@@ -167,41 +173,8 @@ try {
                                     <a href="../notifications/view_all.php" class="view-all-link" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem; font-weight: 500;">View All</a>
                                 </div>
                                 <div class="notification-dropdown-body" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease; background: var(--primary-light, rgba(13, 110, 253, 0.05));">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-megaphone"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">New Examination Schedule</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Data Structures Midterm examination has been scheduled for next week.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">2 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--success-color, #198754); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-check-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Results Published</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Database Systems Assignment results are now available for review.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">5 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--info-color, #0dcaf0); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-info-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">System Update</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">New features have been added to the examination system.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">1 day ago</span>
-                                            </div>
-                                        </div>
+                                    <div class="notification-item" style="padding: 1rem 1.25rem; text-align:center;">
+                                        <p style="margin:0; color: var(--text-secondary);">Loading notifications...</p>
                                     </div>
                                 </div>
                                 <div class="notification-dropdown-footer" style="padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); text-align: center; background: var(--bg-secondary);">
@@ -266,9 +239,9 @@ try {
                         <h2 class="content-card-title">All Student Results</h2>
                         <span class="badge badge-primary" id="resultCount" style="font-size: 1.5rem; padding: 0.6rem 1.2rem; font-weight: 700;"><?php echo $totalResults; ?> Results</span>
                     </div>
-                    <div class="content-card-body">
-                        <div class="table-responsive">
-                            <table class="admin-table">
+                    <div class="content-card-body" style="overflow-x: hidden; width: 100%; max-width: 100%; box-sizing: border-box;">
+                        <div class="table-responsive" style="overflow-x: hidden !important; width: 100%; max-width: 100%;">
+                            <table class="admin-table" style="width: 100%; max-width: 100%; table-layout: fixed;">
                                 <thead>
                                     <tr>
                                         <th>No.</th>
@@ -312,7 +285,7 @@ try {
                                         <td><strong><?php echo number_format($result['total_score'], 2); ?></strong></td>
                                         <td><span class="badge badge-<?php echo $statusClass; ?>"><?php echo number_format($scorePercent, 1); ?>%</span></td>
                                         <td><span class="badge badge-<?php echo $statusClass; ?>"><?php echo $statusText; ?></span></td>
-                                        <td><?php echo $result['submitted_at'] ? date('M d, Y', strtotime($result['submitted_at'])) : 'N/A'; ?></td>
+                                        <td><?php echo !empty($result['submitted_at']) ? date('M d, Y', strtotime($result['submitted_at'])) : 'N/A'; ?></td>
                                         <td>
                                             <?php if ($hasAI): ?>
                                             <span class="badge badge-info" title="AI Provider: <?php echo strtoupper($result['ai_provider'] ?? 'N/A'); ?>, Model: <?php echo htmlspecialchars($result['ai_model'] ?? 'N/A'); ?>">
@@ -356,6 +329,123 @@ try {
     <script src="../../assets/js/admin-functions.js"></script>
     <script src="../assets/js/common.js"></script>
     <script>
+        // Theme Management
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            if (icon) {
+                icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+            }
+        }
+
+        const themeToggle = document.getElementById('themeToggle');
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+
+        if (themeToggle) {
+            let isToggling = false;
+            
+            themeToggle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+            });
+            
+            themeToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (isToggling) return;
+                isToggling = true;
+                
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
+                
+                setTimeout(() => {
+                    isToggling = false;
+                }, 300);
+            });
+        }
+
+        // Sidebar Toggle for Mobile
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const floatingHamburger = document.getElementById('floatingHamburger');
+        const teacherSidebar = document.getElementById('teacherSidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        function closeSidebar() {
+            teacherSidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+            if (floatingHamburger) {
+                floatingHamburger.style.display = 'flex';
+            }
+        }
+
+        function openSidebar() {
+            teacherSidebar.classList.add('active');
+            sidebarOverlay.classList.add('active');
+            if (floatingHamburger) {
+                floatingHamburger.style.display = 'none';
+            }
+        }
+
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeSidebar();
+            });
+        }
+
+        if (floatingHamburger) {
+            floatingHamburger.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openSidebar();
+            });
+        }
+
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', function() {
+                closeSidebar();
+            });
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && teacherSidebar.classList.contains('active')) {
+                closeSidebar();
+            }
+        });
+
+        // User Dropdown Toggle
+        const sidebarUserDropdown = document.getElementById('sidebarUserDropdown');
+        const sidebarUserMenu = document.getElementById('sidebarUserMenu');
+
+        if (sidebarUserDropdown && sidebarUserMenu) {
+            const userHeader = sidebarUserDropdown.querySelector('.sidebar-user-header');
+            
+            if (userHeader) {
+                userHeader.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    sidebarUserDropdown.classList.toggle('active');
+                });
+            }
+
+            document.addEventListener('click', function(e) {
+                if (!sidebarUserDropdown.contains(e.target)) {
+                    sidebarUserDropdown.classList.remove('active');
+                }
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && sidebarUserDropdown.classList.contains('active')) {
+                    sidebarUserDropdown.classList.remove('active');
+                }
+            });
+        }
+
         // Search functionality
         const resultSearch = document.getElementById('resultSearch');
         const resultTableBody = document.getElementById('resultTableBody');

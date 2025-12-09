@@ -203,10 +203,10 @@ CREATE TABLE IF NOT EXISTS ai_evaluations (
 -- =====================================================
 
 -- Additional performance indexes
-CREATE INDEX IF NOT EXISTS idx_submission_student_status ON quiz_submissions(student_id, status);
-CREATE INDEX IF NOT EXISTS idx_answers_submission_postponed ON student_answers(submission_id, is_postponed);
-CREATE INDEX IF NOT EXISTS idx_quiz_status_created ON quizzes(status, created_by);
-CREATE INDEX IF NOT EXISTS idx_questions_quiz_order ON questions(quiz_id, question_order);
+--CREATE INDEX IF NOT EXISTS idx_submission_student_status ON quiz_submissions(student_id, status);
+--CREATE INDEX IF NOT EXISTS idx_answers_submission_postponed ON student_answers(submission_id, is_postponed);
+--CREATE INDEX IF NOT EXISTS idx_quiz_status_created ON quizzes(status, created_by);
+--CREATE INDEX IF NOT EXISTS idx_questions_quiz_order ON questions(quiz_id, question_order);
 
 -- =====================================================
 -- Rate Limiting Table (for security)

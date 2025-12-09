@@ -251,16 +251,16 @@ if (class_exists('AIService') && !empty($questions)) {
                 }
             }
         }
-} catch (Exception $e) {
-    error_log("AI service initialization failed: " . $e->getMessage());
-    error_log("Stack trace: " . $e->getTraceAsString());
-    // Continue without AI evaluation
+    } catch (Exception $e) {
+        error_log("AI service initialization failed: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
+        // Continue without AI evaluation
+    }
 } else {
     error_log("AI evaluation SKIPPED: AIService class not found OR questions array is empty");
     if (empty($questions)) {
         error_log("Questions array is empty! Questions data was not sent from frontend.");
     }
-}
 }
 
 // Calculate total AI marks

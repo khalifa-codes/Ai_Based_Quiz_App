@@ -601,6 +601,10 @@ body.loading .chart-container {
     flex: 1;
     padding: 1.5rem;
     padding-left: 2rem; /* Extra left padding for better spacing from sidebar */
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 /* Stats Cards */
@@ -720,6 +724,9 @@ body.loading .chart-container {
     margin-bottom: 1.5rem;
     overflow: hidden;
     min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .content-card-header {
@@ -764,19 +771,32 @@ body.loading .chart-container {
 
 .content-card-body {
     padding: 1.5rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 /* Table Styles */
 .table-responsive {
     border-radius: 8px;
-    overflow: hidden;
+    overflow-x: hidden !important;
+    overflow-y: auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: block;
 }
 
 .admin-table {
     width: 100%;
+    max-width: 100%;
     margin: 0;
     background: var(--bg-primary);
     color: var(--text-primary);
+    table-layout: fixed;
+    box-sizing: border-box;
+    border-collapse: collapse;
 }
 
 .admin-table thead {
@@ -784,22 +804,31 @@ body.loading .chart-container {
 }
 
 .admin-table th {
-    padding: 1rem;
+    padding: 0.75rem 0.5rem;
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: white;
     border-bottom: 2px solid rgba(255, 255, 255, 0.2);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    text-overflow: ellipsis;
+    max-width: 0;
 }
 
 .admin-table td {
-    padding: 1rem;
+    padding: 0.75rem 0.5rem;
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
-    font-size: 1rem;
+    font-size: 0.9rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    text-overflow: ellipsis;
 }
 
 .admin-table tbody tr {
@@ -2371,15 +2400,34 @@ a.btn {
     }
     
     .table-responsive {
-        overflow-x: auto;
+        overflow-x: hidden;
+        overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         -ms-overflow-style: -ms-autohiding-scrollbar;
+        width: 100%;
+        max-width: 100%;
+    }
+    
+    .admin-table {
+        width: 100%;
+        max-width: 100%;
+        table-layout: fixed;
+    }
+    
+    .admin-table th,
+    .admin-table td {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
     }
     
     .admin-table th,
     .admin-table td {
         padding: 0.5rem 0.4rem;
-        white-space: nowrap;
+        white-space: normal !important;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        max-width: 0;
     }
     
     .admin-table th {

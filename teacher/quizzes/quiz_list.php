@@ -7,9 +7,16 @@ $quizzes = [];
 $totalQuizzes = 0;
 
 try {
-    $db = Database::getInstance();
-    $conn = $db->getConnection();
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
     
+    // Optimized query: Fetch quiz type in single query using subquery
     $stmt = $conn->prepare("
         SELECT 
             q.id,
@@ -21,7 +28,14 @@ try {
             q.status,
             q.ai_provider,
             q.created_at,
-            COUNT(DISTINCT qs.id) as submission_count
+            COUNT(DISTINCT qs.id) as submission_count,
+            CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM questions qu 
+                    WHERE qu.quiz_id = q.id AND qu.question_type = 'subjective'
+                ) THEN 'subjective'
+                ELSE 'objective'
+            END as type
         FROM quizzes q
         LEFT JOIN quiz_submissions qs ON q.id = qs.quiz_id
         WHERE q.created_by = ?
@@ -32,26 +46,14 @@ try {
     $quizzes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $totalQuizzes = count($quizzes);
     
-    // Determine quiz type for each quiz
+    // Add duration_minutes for each quiz
     foreach ($quizzes as &$quiz) {
-        $typeStmt = $conn->prepare("
-            SELECT DISTINCT question_type 
-            FROM questions 
-            WHERE quiz_id = ?
-        ");
-        $typeStmt->execute([$quiz['id']]);
-        $questionTypes = $typeStmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        if (in_array('subjective', $questionTypes)) {
-            $quiz['type'] = 'subjective';
-        } else {
-            $quiz['type'] = 'objective';
-        }
-        
         $quiz['duration_minutes'] = round($quiz['duration'] / 60);
     }
 } catch (Exception $e) {
     error_log("Quiz List Error: " . $e->getMessage());
+    $quizzes = [];
+    $totalQuizzes = 0;
 }
 ?>
 <!DOCTYPE html>
@@ -205,7 +207,7 @@ try {
                         <div class="notification-wrapper" style="position: relative;">
                             <button class="topbar-btn notification-btn" id="notificationBtn" title="Notifications" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 40px !important; height: 40px !important; position: relative !important; flex-shrink: 0 !important; margin: 0 !important;">
                                 <i class="bi bi-bell" style="font-size: 1.3rem !important;"></i>
-                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">3</span>
+                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">0</span>
                             </button>
                             <!-- Notification Dropdown -->
                             <div class="notification-dropdown" id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 10px); right: 0; width: 380px; max-width: calc(100vw - 40px); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden;">
@@ -214,41 +216,8 @@ try {
                                     <a href="../notifications/view_all.php" class="view-all-link" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem; font-weight: 500;">View All</a>
                                 </div>
                                 <div class="notification-dropdown-body" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease; background: var(--primary-light, rgba(13, 110, 253, 0.05));">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-megaphone"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">New Examination Schedule</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Data Structures Midterm examination has been scheduled for next week.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">2 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--success-color, #198754); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-check-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Results Published</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Database Systems Assignment results are now available for review.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">5 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--info-color, #0dcaf0); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-info-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">System Update</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">New features have been added to the examination system.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">1 day ago</span>
-                                            </div>
-                                        </div>
+                                    <div class="notification-item" style="padding: 1rem 1.25rem; text-align:center;">
+                                        <p style="margin:0; color: var(--text-secondary);">Loading notifications...</p>
                                     </div>
                                 </div>
                                 <div class="notification-dropdown-footer" style="padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); text-align: center; background: var(--bg-secondary);">

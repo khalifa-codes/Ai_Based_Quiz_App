@@ -24,8 +24,14 @@ $statistics = [
 ];
 
 try {
-    $db = Database::getInstance();
-    $conn = $db->getConnection();
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
     
     // Get submission details
     if ($submissionId > 0) {

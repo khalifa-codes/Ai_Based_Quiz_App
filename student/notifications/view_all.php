@@ -51,31 +51,28 @@ try {
             visibility: visible !important;
             opacity: 1 !important;
         }
-        .notification-card {
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            transition: all 0.2s ease;
-            background: var(--bg-primary);
-        }
-        .notification-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .notification-card.unread {
-            background: var(--primary-light, rgba(13, 110, 253, 0.05));
-            border-color: var(--primary-color);
-        }
-        /* Ensure topbar matches other modules */
-        .admin-topbar {
-            padding: 1rem 1.5rem !important;
-            min-height: auto !important;
-        }
-        .topbar-title {
-            font-size: 2rem !important;
-            font-weight: 700 !important;
-            margin: 0 !important;
-        }
+        .notification-page-header { margin-bottom: 2rem; }
+        .notification-filters { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .filter-btn { padding: 0.5rem 1.25rem; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); border-radius: 8px; cursor: pointer; transition: all 0.2s ease; }
+        .filter-btn:hover { background: var(--primary-light); border-color: var(--primary-color); }
+        .filter-btn.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        .notification-card { padding: 1.5rem; border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 1.5rem; transition: all 0.2s ease; background: var(--bg-primary); }
+        .notification-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-2px); }
+        .notification-card.unread { border-left: 4px solid var(--primary-color); background: var(--primary-light, rgba(13, 110, 253, 0.05)); }
+        .notification-header { display: flex; align-items: start; gap: 1rem; margin-bottom: 0.75rem; }
+        .notification-icon-large { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1.25rem; }
+        .notification-content { flex: 1; min-width: 0; }
+        .notification-title { margin: 0 0 0.5rem 0; font-size: 1.1rem; font-weight: 600; color: var(--text-primary); }
+        .notification-message { margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.6; }
+        .notification-meta { display: flex; align-items: center; gap: 1rem; font-size: 0.85rem; color: var(--text-muted); }
+        .notification-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .mark-read-btn, .delete-btn { padding: 0.4rem 0.8rem; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease; }
+        .mark-read-btn { background: var(--primary-color); color: white; }
+        .mark-read-btn:hover { opacity: 0.9; }
+        .delete-btn { background: var(--danger-color, #dc3545); color: white; }
+        .delete-btn:hover { opacity: 0.9; }
+        .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+        .empty-state i { font-size: 4rem; margin-bottom: 1rem; opacity: 0.5; }
     </style>
 </head>
 <body>
@@ -145,45 +142,43 @@ try {
                 </div>
             </div>
             <div class="admin-content">
-                <div class="content-card">
-                    <div class="content-card-header">
-                        <h2 class="content-card-title">Notifications</h2>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-sm btn-outline-primary active" data-filter="all">All</button>
-                            <button class="btn btn-sm btn-outline-primary" data-filter="unread">Unread</button>
-                            <button class="btn btn-sm btn-outline-primary" data-filter="read">Read</button>
-                            <button class="btn btn-sm btn-outline-primary" data-filter="announcements">Announcements</button>
-                            <button class="btn btn-sm btn-outline-primary" data-filter="results">Results</button>
-                        </div>
+                <div class="content-card" style="padding: 2rem;">
+                    <!-- Filters -->
+                    <div class="notification-filters" style="margin-bottom: 2rem;">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="unread">Unread</button>
+                        <button class="filter-btn" data-filter="read">Read</button>
+                        <button class="filter-btn" data-filter="exam">Examinations</button>
+                        <button class="filter-btn" data-filter="result">Results</button>
                     </div>
-                    <div class="content-card-body">
+
+                    <!-- Notifications List -->
+                    <div id="notificationsContainer" style="margin-top: 1.5rem;">
                         <?php if (empty($notifications)): ?>
-                            <div class="alert alert-info mb-0">
-                                <i class="bi bi-info-circle me-2"></i>No notifications yet.
+                            <div class="empty-state">
+                                <i class="bi bi-bell-slash"></i>
+                                <h3>No Notifications</h3>
+                                <p>You don't have any notifications yet.</p>
                             </div>
                         <?php else: ?>
                             <?php foreach ($notifications as $note): ?>
-                                <div class="notification-card" data-type="<?php echo htmlspecialchars($note['type']); ?>">
-                                    <div class="d-flex align-items-start gap-3">
-                                        <div class="notification-icon" style="width: 50px; height: 50px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                            <i class="bi <?php echo $note['type'] === 'result' ? 'bi-check-circle' : 'bi-megaphone'; ?>" style="font-size: 1.5rem;"></i>
+                                <div class="notification-card unread" data-type="<?php echo htmlspecialchars($note['type']); ?>">
+                                    <div class="notification-header">
+                                        <div class="notification-icon-large" style="background: <?php echo $note['type'] === 'result' ? 'var(--success-color, #198754)' : 'var(--primary-color)'; ?>; color: white;">
+                                            <i class="bi <?php echo $note['type'] === 'result' ? 'bi-check-circle' : 'bi-megaphone'; ?>"></i>
                                         </div>
-                                        <div style="flex: 1;">
-                                            <h4 style="margin: 0 0 0.5rem 0; font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">
-                                                <?php echo htmlspecialchars($note['title']); ?>
-                                            </h4>
-                                            <p style="margin: 0 0 0.5rem 0; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.5;">
-                                                <?php echo htmlspecialchars($note['description']); ?>
-                                            </p>
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <span style="font-size: 0.85rem; color: var(--text-muted);">
-                                                    <i class="bi bi-clock"></i> <?php echo formatRelativeTime($note['timestamp'] ?? null); ?>
-                                                </span>
-                                                <div class="d-flex gap-2">
-                                                    <a href="<?php echo htmlspecialchars($note['url']); ?>" class="btn btn-sm btn-outline-primary">Open</a>
-                                                </div>
+                                        <div class="notification-content">
+                                            <h3 class="notification-title"><?php echo htmlspecialchars($note['title']); ?></h3>
+                                            <p class="notification-message"><?php echo htmlspecialchars($note['description']); ?></p>
+                                            <div class="notification-meta">
+                                                <span><i class="bi bi-clock"></i> <?php echo formatRelativeTime($note['timestamp'] ?? null); ?></span>
+                                                <span><i class="bi bi-tag"></i> <?php echo $note['type'] === 'result' ? 'Results' : 'Examination'; ?></span>
                                             </div>
                                         </div>
+                                    </div>
+                                    <div class="notification-actions">
+                                        <button class="mark-read-btn" onclick="markAsRead(this)"><i class="bi bi-check-circle"></i> Mark as Read</button>
+                                        <button class="delete-btn" onclick="deleteNotification(this)"><i class="bi bi-trash"></i> Delete</button>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
@@ -214,7 +209,14 @@ try {
                     } else if (filter === 'read') {
                         card.style.display = card.classList.contains('unread') ? 'none' : 'block';
                     } else {
-                        card.style.display = card.getAttribute('data-type') === filter ? 'block' : 'none';
+                        const cardType = card.getAttribute('data-type');
+                        if (filter === 'exam') {
+                            card.style.display = cardType === 'exam' ? 'block' : 'none';
+                        } else if (filter === 'result') {
+                            card.style.display = cardType === 'result' ? 'block' : 'none';
+                        } else {
+                            card.style.display = cardType === filter ? 'block' : 'none';
+                        }
                     }
                 });
             });
@@ -223,8 +225,10 @@ try {
         function markAsRead(btn) {
             const card = btn.closest('.notification-card');
             card.classList.remove('unread');
-            btn.textContent = 'Read';
             btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-check-circle"></i> Read';
+            btn.style.opacity = '0.6';
+            btn.style.cursor = 'not-allowed';
         }
 
         function deleteNotification(btn) {

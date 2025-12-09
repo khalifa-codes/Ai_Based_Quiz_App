@@ -1,4 +1,87 @@
-<?php require_once '../auth_check.php'; ?>
+<?php 
+require_once '../auth_check.php';
+require_once __DIR__ . '/../../config/database.php';
+
+$teacherId = (int)($_SESSION['user_id'] ?? 0);
+$notifications = [];
+$filter = $_GET['filter'] ?? 'all';
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    
+    // Build query based on filter
+    $query = "SELECT id, title, message, type, is_read, created_at FROM notifications WHERE teacher_id = ?";
+    $params = [$teacherId];
+    
+    if ($filter === 'unread') {
+        $query .= " AND (is_read = 0 OR is_read IS NULL)";
+    } elseif ($filter === 'read') {
+        $query .= " AND is_read = 1";
+    } elseif ($filter === 'announcement') {
+        $query .= " AND type = 'announcement'";
+    } elseif ($filter === 'results') {
+        $query .= " AND type = 'results'";
+    }
+    
+    $query .= " ORDER BY created_at DESC";
+    
+    $stmt = $conn->prepare($query);
+    $stmt->execute($params);
+    $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+} catch (Exception $e) {
+    error_log('View All Notifications Error: ' . $e->getMessage());
+    $notifications = [];
+}
+
+// Helper functions
+function getNotificationIcon($type) {
+    $icons = [
+        'info' => 'bi-info-circle',
+        'success' => 'bi-check-circle',
+        'warning' => 'bi-exclamation-triangle',
+        'error' => 'bi-x-circle',
+        'exam' => 'bi-file-earmark-text',
+        'results' => 'bi-clipboard-data',
+        'announcement' => 'bi-megaphone',
+        'default' => 'bi-megaphone'
+    ];
+    return $icons[$type] ?? $icons['default'];
+}
+
+function getNotificationIconBg($type) {
+    $colors = [
+        'info' => 'var(--info-color, #0dcaf0)',
+        'success' => 'var(--success-color, #198754)',
+        'warning' => 'var(--warning-color, #ffc107)',
+        'error' => 'var(--danger-color, #dc3545)',
+        'exam' => 'var(--primary-color)',
+        'results' => 'var(--success-color, #198754)',
+        'announcement' => 'var(--primary-color)',
+        'default' => 'var(--primary-color)'
+    ];
+    return $colors[$type] ?? $colors['default'];
+}
+
+function getTimeAgo($datetime) {
+    if (empty($datetime)) return '';
+    $timestamp = strtotime($datetime);
+    $diff = time() - $timestamp;
+    
+    if ($diff < 60) return 'Just now';
+    if ($diff < 3600) return floor($diff / 60) . ' minutes ago';
+    if ($diff < 86400) return floor($diff / 3600) . ' hours ago';
+    if ($diff < 604800) return floor($diff / 86400) . ' days ago';
+    return date('M d, Y', $timestamp);
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -179,7 +262,7 @@
 
             <!-- Content -->
             <div class="admin-content">
-                <div class="content-card" style="padding: 2rem;">
+                <div class="content-card">
                     <!-- Filters -->
                     <div class="notification-filters" style="margin-bottom: 2rem;">
                         <button class="filter-btn active" data-filter="all">All</button>
@@ -191,86 +274,43 @@
 
                     <!-- Notifications List -->
                     <div id="notificationsContainer" style="margin-top: 1.5rem;">
-                        <!-- Sample Notifications -->
-                        <div class="notification-card unread" data-type="announcement">
+                        <?php if (empty($notifications)): ?>
+                            <div class="empty-state">
+                                <i class="bi bi-bell-slash"></i>
+                                <h3>No notifications found</h3>
+                                <p>You don't have any notifications yet.</p>
+                            </div>
+                        <?php else: ?>
+                            <?php foreach ($notifications as $note): 
+                                $isUnread = !isset($note['is_read']) || $note['is_read'] == 0;
+                                $type = $note['type'] ?? 'info';
+                                $iconClass = getNotificationIcon($type);
+                                $iconBg = getNotificationIconBg($type);
+                                $timeAgo = getTimeAgo($note['created_at'] ?? '');
+                            ?>
+                            <div class="notification-card <?php echo $isUnread ? 'unread' : ''; ?>" data-type="<?php echo htmlspecialchars($type); ?>" data-notification-id="<?php echo $note['id']; ?>">
                             <div class="notification-header">
-                                <div class="notification-icon-large" style="background: var(--primary-color); color: white;">
-                                    <i class="bi bi-megaphone"></i>
+                                <div class="notification-icon-large" style="background: <?php echo $iconBg; ?>; color: white;">
+                                    <i class="bi <?php echo $iconClass; ?>"></i>
                                 </div>
                                 <div class="notification-content">
-                                    <h3 class="notification-title">New Examination Schedule</h3>
-                                    <p class="notification-message">The Data Structures Midterm examination has been scheduled for next week. Please review the schedule and prepare your students accordingly. The examination will cover chapters 1-5 and will be conducted in the main hall.</p>
+                                    <h3 class="notification-title"><?php echo htmlspecialchars($note['title'] ?? 'Notification'); ?></h3>
+                                    <p class="notification-message"><?php echo htmlspecialchars($note['message'] ?? ''); ?></p>
                                     <div class="notification-meta">
-                                        <span><i class="bi bi-clock"></i> 2 hours ago</span>
-                                        <span><i class="bi bi-tag"></i> Announcement</span>
+                                        <span><i class="bi bi-clock"></i> <?php echo $timeAgo; ?></span>
+                                        <span><i class="bi bi-tag"></i> <?php echo ucfirst($type); ?></span>
                                     </div>
                                 </div>
                             </div>
                             <div class="notification-actions">
-                                <button class="mark-read-btn" onclick="markAsRead(this)"><i class="bi bi-check-circle"></i> Mark as Read</button>
-                                <button class="delete-btn" onclick="deleteNotification(this)"><i class="bi bi-trash"></i> Delete</button>
+                                <?php if ($isUnread): ?>
+                                <button class="mark-read-btn" onclick="markAsRead(<?php echo $note['id']; ?>, this)"><i class="bi bi-check-circle"></i> Mark as Read</button>
+                                <?php endif; ?>
+                                <button class="delete-btn" onclick="deleteNotification(<?php echo $note['id']; ?>, this)"><i class="bi bi-trash"></i> Delete</button>
                             </div>
                         </div>
-
-                        <div class="notification-card unread" data-type="results">
-                            <div class="notification-header">
-                                <div class="notification-icon-large" style="background: var(--success-color, #198754); color: white;">
-                                    <i class="bi bi-check-circle"></i>
-                                </div>
-                                <div class="notification-content">
-                                    <h3 class="notification-title">Results Published</h3>
-                                    <p class="notification-message">Database Systems Assignment results are now available for review. You can access the results from the Department Results section. Overall performance: 85% average score.</p>
-                                    <div class="notification-meta">
-                                        <span><i class="bi bi-clock"></i> 5 hours ago</span>
-                                        <span><i class="bi bi-tag"></i> Results</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="notification-actions">
-                                <button class="mark-read-btn" onclick="markAsRead(this)"><i class="bi bi-check-circle"></i> Mark as Read</button>
-                                <button class="delete-btn" onclick="deleteNotification(this)"><i class="bi bi-trash"></i> Delete</button>
-                            </div>
-                        </div>
-
-                        <div class="notification-card" data-type="announcement">
-                            <div class="notification-header">
-                                <div class="notification-icon-large" style="background: var(--info-color, #0dcaf0); color: white;">
-                                    <i class="bi bi-info-circle"></i>
-                                </div>
-                                <div class="notification-content">
-                                    <h3 class="notification-title">System Update</h3>
-                                    <p class="notification-message">New features have been added to the examination system. You can now use AI-powered evaluation for subjective questions and send results directly via email to students.</p>
-                                    <div class="notification-meta">
-                                        <span><i class="bi bi-clock"></i> 1 day ago</span>
-                                        <span><i class="bi bi-tag"></i> Announcement</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="notification-actions">
-                                <button class="mark-read-btn" onclick="markAsRead(this)" style="display: none;"><i class="bi bi-check-circle"></i> Mark as Read</button>
-                                <button class="delete-btn" onclick="deleteNotification(this)"><i class="bi bi-trash"></i> Delete</button>
-                            </div>
-                        </div>
-
-                        <div class="notification-card" data-type="announcement">
-                            <div class="notification-header">
-                                <div class="notification-icon-large" style="background: var(--warning-color, #ffc107); color: white;">
-                                    <i class="bi bi-exclamation-triangle"></i>
-                                </div>
-                                <div class="notification-content">
-                                    <h3 class="notification-title">Examination Reminder</h3>
-                                    <p class="notification-message">Reminder: Computer Networks Quiz is scheduled for tomorrow at 10:00 AM. Please ensure all students are aware of the examination schedule.</p>
-                                    <div class="notification-meta">
-                                        <span><i class="bi bi-clock"></i> 2 days ago</span>
-                                        <span><i class="bi bi-tag"></i> Announcement</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="notification-actions">
-                                <button class="mark-read-btn" onclick="markAsRead(this)" style="display: none;"><i class="bi bi-check-circle"></i> Mark as Read</button>
-                                <button class="delete-btn" onclick="deleteNotification(this)"><i class="bi bi-trash"></i> Delete</button>
-                            </div>
-                        </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -368,34 +408,68 @@
         });
 
         // Mark as Read
-        function markAsRead(btn) {
-            const card = btn.closest('.notification-card');
-            card.classList.remove('unread');
-            btn.style.display = 'none';
-            // TODO: Update in backend
+        function markAsRead(notificationId, btn) {
+            if (!notificationId) return;
+            
+            fetch('../api/teacher/mark_notification_read.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ notification_id: notificationId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const card = btn.closest('.notification-card');
+                    if (card) {
+                        card.classList.remove('unread');
+                        btn.style.display = 'none';
+                    }
+                } else {
+                    alert('Error marking notification as read');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error marking notification as read');
+            });
         }
 
         // Delete Notification
-        function deleteNotification(btn) {
-            if (confirm('Are you sure you want to delete this notification?')) {
-                const card = btn.closest('.notification-card');
-                card.style.transition = 'opacity 0.3s ease';
-                card.style.opacity = '0';
-                setTimeout(() => {
-                    card.remove();
-                    // Check if no notifications left
-                    if (document.querySelectorAll('.notification-card').length === 0) {
-                        document.getElementById('notificationsContainer').innerHTML = `
-                            <div class="empty-state">
-                                <i class="bi bi-bell-slash"></i>
-                                <h3>No Notifications</h3>
-                                <p>You're all caught up! No notifications to display.</p>
-                            </div>
-                        `;
+        function deleteNotification(notificationId, btn) {
+            if (!notificationId || !confirm('Are you sure you want to delete this notification?')) return;
+            
+            fetch('../api/teacher/delete_notification.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ notification_id: notificationId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const card = btn.closest('.notification-card');
+                    if (card) {
+                        card.style.transition = 'opacity 0.3s ease';
+                        card.style.opacity = '0';
+                        setTimeout(() => {
+                            card.remove();
+                            const container = document.getElementById('notificationsContainer');
+                            if (container && container.querySelectorAll('.notification-card').length === 0) {
+                                container.innerHTML = '<div class="empty-state"><i class="bi bi-bell-slash"></i><h3>No notifications found</h3><p>You don\'t have any notifications yet.</p></div>';
+                            }
+                        }, 300);
                     }
-                }, 300);
-                // TODO: Delete from backend
-            }
+                } else {
+                    alert('Error deleting notification');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error deleting notification');
+            });
         }
     </script>
     <script src="../assets/js/activity-tracker.js"></script>

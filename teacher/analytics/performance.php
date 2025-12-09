@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Performance Analytics - Teacher Panel</title>
     <link rel="icon" type="image/png" href="../../assets/images/logo-removebg-preview.png">
+    <link rel="apple-touch-icon" href="../../assets/images/logo-removebg-preview.png">
     <script>
         (function() {
             const savedTheme = localStorage.getItem('theme') || 'light';

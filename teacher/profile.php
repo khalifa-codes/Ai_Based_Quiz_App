@@ -1,4 +1,49 @@
-<?php require_once 'auth_check.php'; ?>
+<?php 
+require_once 'auth_check.php';
+require_once __DIR__ . '/../config/database.php';
+
+$teacherId = (int)($_SESSION['user_id'] ?? 0);
+$teacherData = [
+    'name' => 'Teacher',
+    'email' => '',
+    'phone' => '',
+    'subject' => '',
+    'department' => '',
+    'join_date' => ''
+];
+$notifications = [];
+$notificationCount = 0;
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    
+    // Fetch teacher data
+    $stmt = $conn->prepare("SELECT name, email, phone, subject, department, created_at FROM teachers WHERE id = ?");
+    $stmt->execute([$teacherId]);
+    $teacher = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($teacher) {
+        $teacherData['name'] = htmlspecialchars($teacher['name'] ?? 'Teacher');
+        $teacherData['email'] = htmlspecialchars($teacher['email'] ?? '');
+        $teacherData['phone'] = htmlspecialchars($teacher['phone'] ?? '');
+        $teacherData['subject'] = htmlspecialchars($teacher['subject'] ?? '');
+        $teacherData['department'] = htmlspecialchars($teacher['department'] ?? '');
+        $teacherData['join_date'] = !empty($teacher['created_at']) ? date('F j, Y', strtotime($teacher['created_at'])) : '';
+    }
+    
+    // Notifications will be loaded via JavaScript API
+    $notifications = [];
+    $notificationCount = 0;
+} catch (Exception $e) {
+    error_log('Teacher profile data fetch error: ' . $e->getMessage());
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -111,7 +156,7 @@
                         <div class="notification-wrapper" style="position: relative;">
                             <button class="topbar-btn notification-btn" id="notificationBtn" title="Notifications" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 40px !important; height: 40px !important; position: relative !important; flex-shrink: 0 !important; margin: 0 !important;">
                                 <i class="bi bi-bell" style="font-size: 1.3rem !important;"></i>
-                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">3</span>
+                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">0</span>
                             </button>
                             <!-- Notification Dropdown -->
                             <div class="notification-dropdown" id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 10px); right: 0; width: 380px; max-width: calc(100vw - 40px); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden;">
@@ -120,41 +165,8 @@
                                     <a href="notifications/view_all.php" class="view-all-link" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem; font-weight: 500;">View All</a>
                                 </div>
                                 <div class="notification-dropdown-body" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease; background: var(--primary-light, rgba(13, 110, 253, 0.05));">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-megaphone"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">New Examination Schedule</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Data Structures Midterm examination has been scheduled for next week.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">2 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--success-color, #198754); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-check-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Results Published</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Database Systems Assignment results are now available for review.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">5 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="notification-item" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--info-color, #0dcaf0); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-info-circle"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">System Update</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">New features have been added to the examination system.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">1 day ago</span>
-                                            </div>
-                                        </div>
+                                    <div class="notification-item" style="padding: 1rem 1.25rem; text-align:center;">
+                                        <p style="margin:0; color: var(--text-secondary);">Loading notifications...</p>
                                     </div>
                                 </div>
                                 <div class="notification-dropdown-footer" style="padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); text-align: center; background: var(--bg-secondary);">
@@ -180,37 +192,37 @@
                                 <div class="col-md-6">
                                     <div class="admin-form-group">
                                         <label class="admin-form-label">Full Name</label>
-                                        <input type="text" class="admin-form-control" id="teacherName" value="John Doe" readonly>
+                                        <input type="text" class="admin-form-control" id="teacherName" value="<?php echo $teacherData['name']; ?>" readonly>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="admin-form-group">
                                         <label class="admin-form-label">Email</label>
-                                        <input type="email" class="admin-form-control" id="teacherEmail" value="john.doe@example.com" readonly>
+                                        <input type="email" class="admin-form-control" id="teacherEmail" value="<?php echo $teacherData['email']; ?>" readonly>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="admin-form-group">
                                         <label class="admin-form-label">Phone Number</label>
-                                        <input type="tel" class="admin-form-control" id="teacherPhone" value="+1234567890" readonly>
+                                        <input type="tel" class="admin-form-control" id="teacherPhone" value="<?php echo $teacherData['phone']; ?>" readonly>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="admin-form-group">
                                         <label class="admin-form-label">Subject</label>
-                                        <input type="text" class="admin-form-control" value="Data Structures & Algorithms" readonly>
+                                        <input type="text" class="admin-form-control" value="<?php echo $teacherData['subject']; ?>" readonly>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="admin-form-group">
                                         <label class="admin-form-label">Department</label>
-                                        <input type="text" class="admin-form-control" value="Science" readonly>
+                                        <input type="text" class="admin-form-control" value="<?php echo $teacherData['department']; ?>" readonly>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="admin-form-group">
                                         <label class="admin-form-label">Join Date</label>
-                                        <input type="text" class="admin-form-control" value="January 1, 2024" readonly>
+                                        <input type="text" class="admin-form-control" value="<?php echo $teacherData['join_date']; ?>" readonly>
                                     </div>
                                 </div>
                             </div>

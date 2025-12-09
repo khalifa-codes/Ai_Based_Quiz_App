@@ -314,6 +314,18 @@ body::before {
     box-sizing: border-box;
 }
 
+[data-theme="dark"] .form-floating > .form-control {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .form-floating > .form-control:focus {
+    background: var(--bg-secondary);
+    border-color: var(--primary-color);
+    color: var(--text-primary);
+}
+
 .form-floating:has(.password-toggle) > .form-control {
     padding-right: 3rem;
 }
@@ -680,6 +692,14 @@ body::before {
 .form-control.is-invalid:focus {
     border-color: var(--danger-color);
     box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
+}
+
+[data-theme="dark"] .form-control.is-invalid {
+    background: var(--bg-secondary);
+}
+
+[data-theme="dark"] .form-control.is-invalid:focus {
+    background: var(--bg-secondary);
 }
 
 /* Form Text */

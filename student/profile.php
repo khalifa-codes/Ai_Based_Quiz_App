@@ -1,4 +1,28 @@
-<?php require_once 'auth_check.php'; ?>
+<?php 
+require_once 'auth_check.php';
+require_once __DIR__ . '/includes/student_data_helper.php';
+
+$studentId = (int)($_SESSION['user_id'] ?? 0);
+$notifications = [];
+$notificationCount = 0;
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    $recentSubmissions = fetchStudentRecentSubmissions($conn, $studentId, 10);
+    $upcomingQuizzes = fetchStudentUpcomingQuizzes($conn, $studentId, 5);
+    $notifications = buildStudentNotifications($recentSubmissions, $upcomingQuizzes);
+    $notificationCount = count($notifications);
+} catch (Throwable $e) {
+    error_log('Student profile notifications fetch error: ' . $e->getMessage());
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -127,7 +151,11 @@
                         <div class="notification-wrapper" style="position: relative;">
                             <button class="topbar-btn notification-btn" id="notificationBtn" title="Notifications" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 44px !important; height: 44px !important; position: relative !important; flex-shrink: 0 !important; margin: 0 !important;">
                                 <i class="bi bi-bell" style="font-size: 1.3rem !important;"></i>
-                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">2</span>
+                                <?php if ($notificationCount > 0): ?>
+                                <span class="notification-badge" id="notificationBadge" style="position: absolute; top: 4px; right: 4px; background: var(--danger-color, #dc3545); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; font-weight: 600; border: 2px solid var(--bg-primary, #fff);">
+                                    <?php echo $notificationCount > 99 ? '99+' : $notificationCount; ?>
+                                </span>
+                                <?php endif; ?>
                             </button>
                             <!-- Notification Dropdown -->
                             <div class="notification-dropdown" id="notificationDropdown" style="display: none; position: absolute; top: calc(100% + 10px); right: 0; width: 380px; max-width: calc(100vw - 40px); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden;">
@@ -136,30 +164,32 @@
                                     <a href="notifications/view_all.php" class="view-all-link" style="color: var(--primary-color); text-decoration: none; font-size: 0.9rem; font-weight: 500;">View All</a>
                                 </div>
                                 <div class="notification-dropdown-body" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease; background: var(--primary-light, rgba(13, 110, 253, 0.05));">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-megaphone"></i>
-                                            </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">New Examination Available</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Data Structures Midterm examination is now available. Deadline: Next Friday.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">1 hour ago</span>
-                                            </div>
+                                    <?php if (empty($notifications)): ?>
+                                        <div class="notification-item" style="padding: 1rem 1.25rem; text-align:center;">
+                                            <p style="margin:0; color: var(--text-secondary);">No notifications yet.</p>
                                         </div>
-                                    </div>
-                                    <div class="notification-item unread" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
-                                        <div style="display: flex; align-items: start; gap: 0.75rem;">
-                                            <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--success-color, #198754); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                <i class="bi bi-check-circle"></i>
+                                    <?php else: ?>
+                                        <?php foreach ($notifications as $note): ?>
+                                            <div class="notification-item" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s ease;">
+                                                <a href="<?php echo htmlspecialchars($note['url']); ?>" style="text-decoration:none; color:inherit; display:flex; gap:0.75rem;">
+                                                    <div class="notification-icon" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                                        <i class="bi <?php echo $note['type'] === 'result' ? 'bi-check-circle' : 'bi-megaphone'; ?>"></i>
+                                                    </div>
+                                                    <div style="flex:1; min-width:0;">
+                                                        <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">
+                                                            <?php echo htmlspecialchars($note['title']); ?>
+                                                        </h4>
+                                                        <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
+                                                            <?php echo htmlspecialchars($note['description']); ?>
+                                                        </p>
+                                                        <span style="font-size: 0.75rem; color: var(--text-muted);">
+                                                            <?php echo formatRelativeTime($note['timestamp'] ?? null); ?>
+                                                        </span>
+                                                    </div>
+                                                </a>
                                             </div>
-                                            <div style="flex: 1; min-width: 0;">
-                                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Results Published</h4>
-                                                <p style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Database Systems Assignment results are now available.</p>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">3 hours ago</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="notification-dropdown-footer" style="padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); text-align: center; background: var(--bg-secondary);">
                                     <a href="notifications/view_all.php" class="view-all-btn" style="color: var(--primary-color); text-decoration: none; font-weight: 500; font-size: 0.9rem;">Show All Messages</a>

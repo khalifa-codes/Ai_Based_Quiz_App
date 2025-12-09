@@ -1,11 +1,86 @@
-<?php require_once '../auth_check.php'; ?>
+<?php 
+require_once '../auth_check.php';
+require_once __DIR__ . '/../../config/database.php';
+
+$teacherId = (int)($_SESSION['user_id'] ?? 0);
+$deptId = isset($_GET['dept_id']) ? $_GET['dept_id'] : 'general';
+$deptName = isset($_GET['dept_name']) ? urldecode($_GET['dept_name']) : 'General Department';
+
+$students = [];
+$quizzes = [];
+$assignedQuizzes = [];
+
+try {
+    $dbInstance = Database::getInstance();
+    if (!$dbInstance) {
+        throw new Exception('Database instance could not be created');
+    }
+    $conn = $dbInstance->getConnection();
+    if (!$conn) {
+        throw new Exception('Database connection could not be established');
+    }
+    
+    // Fetch students for this department
+    if ($deptId !== 'general' && is_numeric($deptId)) {
+        $stmt = $conn->prepare("
+            SELECT s.*, COUNT(DISTINCT qs.id) as quiz_count
+            FROM students s
+            LEFT JOIN quiz_submissions qs ON qs.student_id = s.id
+            WHERE s.organization_id = ?
+            GROUP BY s.id
+            ORDER BY s.name ASC
+        ");
+        $stmt->execute([$deptId]);
+        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // For general department, get students from teacher's quizzes
+        $stmt = $conn->prepare("
+            SELECT DISTINCT s.*, COUNT(DISTINCT qs.id) as quiz_count
+            FROM students s
+            INNER JOIN quiz_submissions qs ON qs.student_id = s.id
+            INNER JOIN quizzes q ON q.id = qs.quiz_id
+            WHERE q.created_by = ?
+            GROUP BY s.id
+            ORDER BY s.name ASC
+        ");
+        $stmt->execute([$teacherId]);
+        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    // Fetch all quizzes created by teacher
+    $stmt = $conn->prepare("
+        SELECT q.*, COUNT(DISTINCT qs.id) as submission_count
+        FROM quizzes q
+        LEFT JOIN quiz_submissions qs ON qs.quiz_id = q.id
+        WHERE q.created_by = ?
+        GROUP BY q.id
+        ORDER BY q.created_at DESC
+    ");
+    $stmt->execute([$teacherId]);
+    $quizzes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Fetch notifications
+    $notifStmt = $conn->prepare("SELECT * FROM notifications WHERE teacher_id = ? ORDER BY created_at DESC LIMIT 5");
+    $notifStmt->execute([$teacherId]);
+    $notifications = $notifStmt->fetchAll(PDO::FETCH_ASSOC);
+    $notificationCount = count($notifications);
+} catch (Exception $e) {
+    error_log('Section detail error: ' . $e->getMessage());
+    $students = [];
+    $quizzes = [];
+    $notifications = [];
+    $notificationCount = 0;
+    $conn = null;
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Students - Teacher Panel</title>
+    <title><?php echo htmlspecialchars($deptName); ?> - Teacher Panel</title>
     <link rel="icon" type="image/png" href="../../assets/images/logo-removebg-preview.png">
+    <link rel="apple-touch-icon" href="../../assets/images/logo-removebg-preview.png">
     <script>
         (function() {
             const savedTheme = localStorage.getItem('theme') || 'light';
@@ -44,7 +119,7 @@
         }
     </style>
 </head>
-<body>
+<body class="loading">
     <div class="admin-wrapper">
         <aside class="admin-sidebar" id="teacherSidebar">
             <div class="sidebar-header">
@@ -65,9 +140,9 @@
                 </ul>
                 <div class="nav-section-title">Management</div>
                 <ul class="list-unstyled">
-                    <li class="nav-item"><a href="../classes/class_list.php" class="nav-link"><i class="bi bi-journal-bookmark"></i><span>Departments & Sections</span></a></li>
+                    <li class="nav-item"><a href="class_list.php" class="nav-link active"><i class="bi bi-journal-bookmark"></i><span>Departments & Sections</span></a></li>
                     <li class="nav-item"><a href="../quizzes/quiz_list.php" class="nav-link"><i class="bi bi-file-earmark-text"></i><span>Examinations</span></a></li>
-                    <li class="nav-item"><a href="student_list.php" class="nav-link active"><i class="bi bi-mortarboard"></i><span>Students</span></a></li>
+                    <li class="nav-item"><a href="../students/student_list.php" class="nav-link"><i class="bi bi-mortarboard"></i><span>Students</span></a></li>
                     <li class="nav-item"><a href="../results/quiz_results.php" class="nav-link"><i class="bi bi-clipboard-data"></i><span>Department Results</span></a></li>
                     <li class="nav-item"><a href="../notifications/send_notification.php" class="nav-link"><i class="bi bi-bell"></i><span>Notifications</span></a></li>
                 </ul>
@@ -92,18 +167,12 @@
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
         <main class="admin-main">
             <button class="floating-hamburger" id="floatingHamburger"><i class="bi bi-list"></i></button>
+            <!-- Topbar -->
             <div class="admin-topbar">
                 <div class="topbar-left">
-                    <div>
-                        <h1 class="topbar-title">Students</h1>
-                        <nav aria-label="breadcrumb">
-                            <ol class="breadcrumb">
-                                <li class="breadcrumb-item"><a href="../dashboard.php">Dashboard</a></li>
-                                <li class="breadcrumb-item active">Students</li>
-                            </ol>
-                        </nav>
-                    </div>
+                    <h1 class="topbar-title"><?php echo htmlspecialchars($deptName); ?></h1>
                 </div>
+                
                 <div class="topbar-right">
                     <div class="topbar-actions" style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 0.75rem !important; flex-wrap: nowrap !important;">
                         <!-- Notification Bell -->
@@ -135,151 +204,109 @@
                 </div>
             </div>
             <div class="admin-content">
+                <!-- Students Section -->
                 <div class="content-card mb-4">
+                    <div class="content-card-header d-flex justify-content-between align-items-center">
+                        <h2 class="content-card-title">Students</h2>
+                        <button class="btn btn-primary" id="addStudentBtn">
+                            <i class="bi bi-plus-lg"></i> Add Student
+                        </button>
+                    </div>
                     <div class="content-card-body">
-                        <div class="row align-items-end">
-                            <div class="col-md-3">
-                                <label class="admin-form-label">Search</label>
-                                <div class="search-box">
-                                    <i class="bi bi-search"></i>
-                                    <input type="text" id="studentSearch" placeholder="Search by name or email...">
-                                </div>
+                        <?php if (empty($students)): ?>
+                            <div class="text-center" style="padding: 2rem;">
+                                <i class="bi bi-mortarboard" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                                <p style="color: var(--text-secondary);">No students in this department yet.</p>
+                                <button class="btn btn-primary" id="addStudentBtnEmpty">
+                                    <i class="bi bi-plus-lg"></i> Add Student
+                                </button>
                             </div>
-                            <div class="col-md-2">
-                                <label class="admin-form-label">Status</label>
-                                <select class="admin-form-control" id="statusFilter">
-                                    <option value="all">All Status</option>
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                </select>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Student ID</th>
+                                            <th>Quizzes Taken</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($students as $student): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($student['name'] ?? 'N/A'); ?></td>
+                                                <td><?php echo htmlspecialchars($student['email'] ?? 'N/A'); ?></td>
+                                                <td><?php echo htmlspecialchars($student['student_id'] ?? 'N/A'); ?></td>
+                                                <td><?php echo number_format((int)($student['quiz_count'] ?? 0)); ?></td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-outline-danger remove-student-btn" data-student-id="<?php echo $student['id']; ?>" data-student-name="<?php echo htmlspecialchars($student['name']); ?>">
+                                                        <i class="bi bi-trash"></i> Remove
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
                             </div>
-                            <div class="col-md-2">
-                                <label class="admin-form-label">Class</label>
-                                <select class="admin-form-control" id="classFilter">
-                                    <option value="all">All Classes</option>
-                                    <option value="CS-A">CS Dept - Section A</option>
-                                    <option value="CS-B">CS Dept - Section B</option>
-                                    <option value="CS-C">CS Dept - Section C</option>
-                                </select>
-                            </div>
-                            <div class="col-md-5">
-                                <label class="admin-form-label">Actions</label>
-                                <div class="d-flex gap-2 align-items-end">
-                                    <a href="add_student.php" class="btn btn-primary" style="white-space: nowrap; flex: 1; min-width: 0; height: 42px; display: inline-flex; align-items: center; justify-content: center;">
-                                        <i class="bi bi-plus-lg"></i> Add Student
-                                    </a>
-                                    <button class="btn btn-outline-secondary" id="exportStudentsBtn" style="white-space: nowrap; flex: 1; min-width: 0; height: 42px; display: inline-flex; align-items: center; justify-content: center;">
-                                        <i class="bi bi-download"></i> Export
-                                    </button>
-                                    <button class="btn btn-outline-danger" id="clearFiltersBtn" style="white-space: nowrap; flex: 1; min-width: 0; height: 42px; display: inline-flex; align-items: center; justify-content: center;">
-                                        <i class="bi bi-x-circle"></i> Clear
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
+                
+                <!-- Quizzes Section -->
                 <div class="content-card">
-                    <div class="content-card-header">
-                        <h2 class="content-card-title">All Students</h2>
-                        <span class="badge badge-primary" id="studentCount" style="font-size: 1.5rem; padding: 0.6rem 1.2rem; font-weight: 700;">156 Students</span>
+                    <div class="content-card-header d-flex justify-content-between align-items-center">
+                        <h2 class="content-card-title">Assign Examinations</h2>
+                        <a href="../quizzes/quiz_list.php" class="btn btn-outline-primary">
+                            <i class="bi bi-plus-lg"></i> Create New Quiz
+                        </a>
                     </div>
                     <div class="content-card-body">
-                        <div class="table-responsive">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>No.</th>
-                                        <th>Student Name</th>
-                                        <th>Email</th>
-                                        <th>Class</th>
-                                        <th>Status</th>
-                                        <th>Examinations</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="studentTableBody">
-                                    <tr>
-                                        <td><strong>1</strong></td>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">AS</div>
-                                                <div>
-                                                    <h6 style="margin: 0; color: var(--text-primary);">Alice Smith</h6>
-                                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">#STU001</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>alice.smith@example.com</td>
-                                        <td>CS Dept - Section A</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                        <td><strong>12</strong></td>
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button class="action-btn view" title="View" data-id="1"><i class="bi bi-eye"></i></button>
-                                                <button class="action-btn edit" title="Edit" data-id="1"><i class="bi bi-pencil"></i></button>
-                                                <button class="action-btn delete" title="Delete" data-id="1"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td><strong>2</strong></td>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">BJ</div>
-                                                <div>
-                                                    <h6 style="margin: 0; color: var(--text-primary);">Bob Johnson</h6>
-                                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">#STU002</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>bob.johnson@example.com</td>
-                                        <td>CS Dept - Section B</td>
-                                        <td><span class="badge badge-success">Active</span></td>
-                                        <td><strong>15</strong></td>
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button class="action-btn view" title="View" data-id="2"><i class="bi bi-eye"></i></button>
-                                                <button class="action-btn edit" title="Edit" data-id="2"><i class="bi bi-pencil"></i></button>
-                                                <button class="action-btn delete" title="Delete" data-id="2"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td><strong>3</strong></td>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">CW</div>
-                                                <div>
-                                                    <h6 style="margin: 0; color: var(--text-primary);">Carol Williams</h6>
-                                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">#STU003</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>carol.williams@example.com</td>
-                                        <td>CS Dept - Section C</td>
-                                        <td><span class="badge badge-warning">Inactive</span></td>
-                                        <td><strong>10</strong></td>
-                                        <td>
-                                            <div class="action-buttons">
-                                                <button class="action-btn view" title="View" data-id="3"><i class="bi bi-eye"></i></button>
-                                                <button class="action-btn edit" title="Edit" data-id="3"><i class="bi bi-pencil"></i></button>
-                                                <button class="action-btn delete" title="Delete" data-id="3"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <nav>
-                            <ul class="pagination justify-content-center">
-                                <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Previous</a></li>
-                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                                <li class="page-item"><a class="page-link" href="#">2</a></li>
-                                <li class="page-item"><a class="page-link" href="#">3</a></li>
-                                <li class="page-item"><a class="page-link" href="#">Next</a></li>
-                            </ul>
-                        </nav>
+                        <?php if (empty($quizzes)): ?>
+                            <div class="text-center" style="padding: 2rem;">
+                                <i class="bi bi-file-earmark-text" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                                <p style="color: var(--text-secondary);">No quizzes available. Create a quiz first.</p>
+                                <a href="../quizzes/quiz_list.php" class="btn btn-primary">
+                                    <i class="bi bi-plus-lg"></i> Create Quiz
+                                </a>
+                            </div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Quiz Title</th>
+                                            <th>Subject</th>
+                                            <th>Duration</th>
+                                            <th>Submissions</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($quizzes as $quiz): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($quiz['title'] ?? 'Untitled'); ?></td>
+                                                <td><?php echo htmlspecialchars($quiz['subject'] ?? 'N/A'); ?></td>
+                                                <td><?php echo round(($quiz['duration'] ?? 0) / 60); ?> min</td>
+                                                <td><?php echo number_format((int)($quiz['submission_count'] ?? 0)); ?></td>
+                                                <td>
+                                                    <span class="badge badge-<?php echo $quiz['status'] === 'published' ? 'success' : 'warning'; ?>">
+                                                        <?php echo ucfirst($quiz['status'] ?? 'draft'); ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <a href="../quizzes/quiz_list.php?assign=<?php echo $quiz['id']; ?>&dept_id=<?php echo urlencode($deptId); ?>" class="btn btn-sm btn-primary">
+                                                        <i class="bi bi-check-circle"></i> Assign
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -291,28 +318,42 @@
         // Theme Management
         function updateThemeIcon(theme) {
             const icon = document.getElementById('themeIcon');
-            if (icon) icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+            if (icon) {
+                icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+            }
         }
+
         const themeToggle = document.getElementById('themeToggle');
         const savedTheme = localStorage.getItem('theme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
         updateThemeIcon(savedTheme);
+
         if (themeToggle) {
             let isToggling = false;
-            themeToggle.addEventListener('mousedown', e => e.preventDefault());
+            
+            themeToggle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+            });
+            
             themeToggle.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                
                 if (isToggling) return;
                 isToggling = true;
+                
                 const currentTheme = document.documentElement.getAttribute('data-theme');
                 const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
                 document.documentElement.setAttribute('data-theme', newTheme);
                 localStorage.setItem('theme', newTheme);
                 updateThemeIcon(newTheme);
-                setTimeout(() => { isToggling = false; }, 300);
+                
+                setTimeout(() => {
+                    isToggling = false;
+                }, 300);
             });
         }
+
         // Sidebar Toggle
         const sidebarToggle = document.getElementById('sidebarToggle');
         const floatingHamburger = document.getElementById('floatingHamburger');
@@ -332,6 +373,7 @@
         if (floatingHamburger) floatingHamburger.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); openSidebar(); });
         if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
         document.addEventListener('keydown', e => { if (e.key === 'Escape' && teacherSidebar.classList.contains('active')) closeSidebar(); });
+        
         // User Dropdown
         const sidebarUserDropdown = document.getElementById('sidebarUserDropdown');
         const sidebarUserMenu = document.getElementById('sidebarUserMenu');
@@ -347,22 +389,31 @@
             document.addEventListener('click', e => { if (!sidebarUserDropdown.contains(e.target)) sidebarUserDropdown.classList.remove('active'); });
             document.addEventListener('keydown', e => { if (e.key === 'Escape' && sidebarUserDropdown.classList.contains('active')) sidebarUserDropdown.classList.remove('active'); });
         }
-    </script>
-    <script>
-        // Common sidebar and theme functions would be in common.js
-        // Search functionality
-        const studentSearch = document.getElementById('studentSearch');
-        const studentTableBody = document.getElementById('studentTableBody');
-        if (studentSearch) {
-            studentSearch.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase();
-                const rows = studentTableBody.getElementsByTagName('tr');
-                Array.from(rows).forEach(row => {
-                    const text = row.textContent.toLowerCase();
-                    row.style.display = text.includes(searchTerm) ? '' : 'none';
-                });
+        
+        // Add Student Button
+        const addStudentBtn = document.getElementById('addStudentBtn') || document.getElementById('addStudentBtnEmpty');
+        if (addStudentBtn) {
+            addStudentBtn.addEventListener('click', function() {
+                window.location.href = '../students/student_list.php?add_to_dept=<?php echo urlencode($deptId); ?>';
             });
         }
+        
+        // Remove Student Button
+        const removeBtns = document.querySelectorAll('.remove-student-btn');
+        removeBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const studentName = this.getAttribute('data-student-name');
+                const studentId = this.getAttribute('data-student-id');
+                if (confirm('Are you sure you want to remove "' + studentName + '" from this department?')) {
+                    window.location.href = 'remove_student.php?student_id=' + studentId + '&dept_id=<?php echo urlencode($deptId); ?>';
+                }
+            });
+        });
+        
+        // Remove loading class after page load
+        window.addEventListener('load', function() {
+            document.body.classList.remove('loading');
+        });
     </script>
     <script src="../assets/js/activity-tracker.js"></script>
     <script src="../assets/js/notifications.js"></script>
